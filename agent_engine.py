@@ -110,6 +110,9 @@ def build_memento_context(conn, agent, ticket):
 
     # Execution history
     logs = get_execution_logs(conn, ticket["id"])
+    # Keep only the most recent 3 execution attempts
+    if logs:
+        logs = logs[-3:]
     if logs:
         log_lines = []
         for i, log in enumerate(logs):

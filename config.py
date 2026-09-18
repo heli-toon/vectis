@@ -4,7 +4,7 @@ import os
 import sqlite3
 
 # Database
-DB_PATH = os.environ.get("VECTIS_DB_PATH", "paperclip_mini.db")
+DB_PATH = os.environ.get("VECTIS_DB_PATH", "vectis.db")
 
 # Heartbeat
 POLL_INTERVAL_SECONDS = int(os.environ.get("VECTIS_POLL_INTERVAL", "30"))
