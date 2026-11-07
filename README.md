@@ -89,7 +89,7 @@ Environment variables (all optional, with defaults):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VECTIS_DB_PATH` | `paperclip_mini.db` | SQLite database path |
+| `VECTIS_DB_PATH` | `vectis.db` | SQLite database path |
 | `VECTIS_POLL_INTERVAL` | `30` | Heartbeat poll interval (seconds) |
 | `VECTIS_MAX_CONCURRENT` | `1` | Max tickets processed per heartbeat |
 | `VECTIS_TEMPERATURE` | `0.3` | LLM temperature |

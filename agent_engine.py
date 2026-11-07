@@ -207,6 +207,17 @@ def update_ticket_status(conn, ticket_id, status, result=None):
     conn.commit()
 
 
+def claim_ticket(conn, ticket_id):
+    """Atomically claim an OPEN ticket for this worker."""
+    cursor = conn.execute(
+        "UPDATE tickets SET status = 'IN_PROGRESS', updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND status = 'OPEN'",
+        (ticket_id,),
+    )
+    conn.commit()
+    return cursor.rowcount == 1
+
+
 def update_agent_spend(conn, agent_id, cost):
     conn.execute(
         "UPDATE agents SET current_spend = current_spend + ? WHERE id = ?",
@@ -232,17 +243,38 @@ def log_execution(conn, ticket_id, agent_id, prompt_tokens, completion_tokens, c
 def spawn_sub_tickets(conn, parent_ticket_id, agent_id, new_tickets):
     """Create child tickets from agent delegation response."""
     spawned = 0
+    subordinate_ids = {row["id"] for row in get_subordinates(conn, agent_id)}
+
+    if not isinstance(new_tickets, list):
+        print("  [warn] Invalid new_tickets value; expected an array")
+        return 0
+
     for nt in new_tickets:
-        title = nt.get("title", "").strip()
-        assigned_to = nt.get("assigned_to", "").strip()
+        if not isinstance(nt, dict):
+            print("  [warn] Invalid sub-ticket entry; expected an object")
+            continue
+
+        raw_title = nt.get("title", "")
+        raw_assignee = nt.get("assigned_to", "")
         description = nt.get("description", "")
 
+        if not isinstance(raw_title, str) or not isinstance(raw_assignee, str):
+            print("  [warn] Invalid sub-ticket title or assignee; skipping")
+            continue
+        if not isinstance(description, str):
+            print("  [warn] Invalid sub-ticket description; skipping")
+            continue
+
+        title = raw_title.strip()
+        assigned_to = raw_assignee.strip()
         if not title or not assigned_to:
             continue
 
-        target = conn.execute("SELECT id FROM agents WHERE id = ?", (assigned_to,)).fetchone()
-        if not target:
-            print(f"  [warn] Unknown agent '{assigned_to}', skipping sub-ticket: {title}")
+        if assigned_to not in subordinate_ids:
+            print(
+                f"  [warn] Agent '{assigned_to}' is not an active subordinate of "
+                f"'{agent_id}', skipping sub-ticket: {title}"
+            )
             continue
 
         conn.execute(
@@ -282,8 +314,10 @@ def process_ticket(conn, ticket_id):
         print(f"  [skip] Agent {agent['id']} is {agent['status']}")
         return
 
-    # Transition to IN_PROGRESS (FR-3.1)
-    update_ticket_status(conn, ticket_id, "IN_PROGRESS")
+    # Transition to IN_PROGRESS (FR-3.1), guarding against duplicate workers.
+    if not claim_ticket(conn, ticket_id):
+        print(f"  [skip] Ticket #{ticket_id} is no longer OPEN")
+        return
     print(f"  [start] Ticket #{ticket_id} -> IN_PROGRESS (agent: {agent['id']})")
 
     # Build memento context (F-2)
@@ -298,11 +332,17 @@ def process_ticket(conn, ticket_id):
         log_execution(conn, ticket_id, agent["id"], 0, 0, 0.0)
         return
 
-    # Extract usage and content
-    content = response.choices[0].message.content
-    usage = response.usage
-    prompt_tokens = usage.prompt_tokens if usage else 0
-    completion_tokens = usage.completion_tokens if usage else 0
+    # Extract usage and content.
+    try:
+        content = response.choices[0].message.content
+        usage = response.usage
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+    except (AttributeError, IndexError, TypeError) as e:
+        print(f"  [error] Invalid LLM response: {e}")
+        update_ticket_status(conn, ticket_id, "OPEN")
+        log_execution(conn, ticket_id, agent["id"], 0, 0, 0.0)
+        return
 
     # Calculate cost (FR-4.2)
     cost = config.calculate_cost(agent["model_name"], prompt_tokens, completion_tokens)
@@ -330,9 +370,19 @@ def process_ticket(conn, ticket_id):
         return
 
     # Extract and validate fields
-    new_status = parsed.get("status", "DONE").upper()
+    if not isinstance(parsed, dict):
+        print("  [error] JSON response must be an object")
+        update_ticket_status(conn, ticket_id, "OPEN")
+        return
+
+    raw_status = parsed.get("status", "DONE")
     result = parsed.get("result", "")
     new_tickets = parsed.get("new_tickets", [])
+    if not isinstance(raw_status, str) or not isinstance(result, str):
+        print("  [error] JSON response contains invalid status or result types")
+        update_ticket_status(conn, ticket_id, "OPEN")
+        return
+    new_status = raw_status.upper()
 
     valid_statuses = {"DONE", "REVIEW", "FAILED"}
     if new_status not in valid_statuses:

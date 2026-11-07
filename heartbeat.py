@@ -8,10 +8,12 @@ from agent_engine import process_ticket
 
 def recover_interrupted_tickets(conn):
     """Revert IN_PROGRESS tickets to OPEN on startup (NFR-2: OOM Resiliency)."""
-    rows = conn.execute(
+    rows = conn.execute("SELECT id FROM tickets WHERE status = 'IN_PROGRESS'").fetchall()
+    conn.execute(
         "UPDATE tickets SET status = 'OPEN', updated_at = CURRENT_TIMESTAMP "
-        "WHERE status = 'IN_PROGRESS' RETURNING id"
-    ).fetchall()
+        "WHERE status = 'IN_PROGRESS'"
+    )
+    conn.commit()
     if rows:
         print(f"[recovery] Reverted {len(rows)} interrupted ticket(s) to OPEN")
     return len(rows)
