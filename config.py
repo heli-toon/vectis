@@ -3,6 +3,10 @@
 import os
 import sqlite3
 
+# LLM Environment Optimizations
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+os.environ.setdefault("LITELLM_TELEMETRY", "False")
+
 # Database
 DB_PATH = os.environ.get("VECTIS_DB_PATH", "vectis.db")
 
@@ -30,11 +34,14 @@ MODEL_COSTS = {
 DEFAULT_COST = (1.00, 2.00)
 
 
-def get_db_connection():
-    """Return a SQLite connection with foreign keys enabled and Row factory."""
-    conn = sqlite3.connect(DB_PATH)
+def get_db_connection(db_path=None):
+    """Return a SQLite connection with foreign keys and WAL mode enabled and Row factory."""
+    conn = sqlite3.connect(db_path or DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 

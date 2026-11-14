@@ -1,10 +1,14 @@
 """Vectis agent engine: memento context builder, LiteLLM wrapper, and state machine."""
 
 import json
+import re
+import time
 import litellm
 import config
 
 litellm.set_verbose = False
+litellm.telemetry = False
+litellm.suppress_debug_info = True
 
 
 def get_agent(conn, agent_id):
@@ -31,7 +35,7 @@ def get_manager(conn, agent_id):
 
 def get_child_tickets(conn, ticket_id):
     return conn.execute(
-        "SELECT id, title, status, result FROM tickets WHERE parent_ticket_id = ? ORDER BY id",
+        "SELECT id, title, status, result, error_message, assigned_to FROM tickets WHERE parent_ticket_id = ? ORDER BY id",
         (ticket_id,),
     ).fetchall()
 
@@ -102,10 +106,18 @@ def build_memento_context(conn, agent, ticket):
     if children:
         child_lines = []
         for c in children:
-            result_preview = (c["result"] or "N/A")
-            if len(result_preview) > 500:
-                result_preview = result_preview[:500] + "..."
-            child_lines.append(f"- #{c['id']} [{c['status']}]: {c['title']}\n  Result: {result_preview}")
+            if c["status"] == "FAILED":
+                err = c["error_message"] or c["result"] or "Unknown error"
+                child_lines.append(
+                    f"- #{c['id']} [FAILED]: {c['title']}\n"
+                    f"  Sub-task #{c['id']} failed with error: {err}. "
+                    f"Decide whether to re-assign, modify parameters, or fail the parent task."
+                )
+            else:
+                result_preview = (c["result"] or "N/A")
+                if len(result_preview) > 500:
+                    result_preview = result_preview[:500] + "..."
+                child_lines.append(f"- #{c['id']} [{c['status']}]: {c['title']}\n  Result: {result_preview}")
         sections.append("\n## Sub-Task Results\n" + "\n".join(child_lines))
 
     # Execution history
@@ -116,9 +128,12 @@ def build_memento_context(conn, agent, ticket):
     if logs:
         log_lines = []
         for i, log in enumerate(logs):
+            time_part = ""
+            if "execution_time_ms" in log.keys() and log["execution_time_ms"]:
+                time_part = f", {log['execution_time_ms']}ms"
             log_lines.append(
                 f"- Attempt {i + 1}: {log['prompt_tokens']} input + {log['completion_tokens']} output tokens, "
-                f"${log['estimated_cost']:.4f}"
+                f"${log['estimated_cost']:.4f}{time_part}"
             )
         sections.append("\n## Execution History\n" + "\n".join(log_lines))
 
@@ -168,7 +183,7 @@ def call_llm(agent, messages):
 
 
 def parse_agent_response(content):
-    """Parse JSON from LLM response, handling markdown wrappers and extra text."""
+    """Parse JSON from LLM response, handling markdown wrappers, extra text, and trailing commas."""
     if not content:
         raise ValueError("Empty response from LLM")
 
@@ -182,28 +197,93 @@ def parse_agent_response(content):
             lines = lines[:-1]
         content = "\n".join(lines).strip()
 
+    def remove_trailing_commas(text):
+        return re.sub(r',\s*([}\]])', r'\1', text)
+
+    # 1. Direct JSON parse
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        # Try to extract JSON object from surrounding text
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start != -1 and end > start:
-            return json.loads(content[start:end])
-        raise ValueError(f"Could not parse JSON from response: {content[:200]}")
+        pass
+
+    # 2. Try removing trailing commas directly
+    try:
+        return json.loads(remove_trailing_commas(content))
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Extract JSON object {...}
+    start = content.find("{")
+    end = content.rfind("}") + 1
+    if start != -1 and end > start:
+        snippet = content[start:end]
+        try:
+            return json.loads(snippet)
+        except json.JSONDecodeError:
+            try:
+                return json.loads(remove_trailing_commas(snippet))
+            except json.JSONDecodeError:
+                pass
+
+    # 4. Extract JSON array [...]
+    start_arr = content.find("[")
+    end_arr = content.rfind("]") + 1
+    if start_arr != -1 and end_arr > start_arr:
+        snippet = content[start_arr:end_arr]
+        try:
+            return json.loads(snippet)
+        except json.JSONDecodeError:
+            try:
+                return json.loads(remove_trailing_commas(snippet))
+            except json.JSONDecodeError:
+                pass
+
+    raise ValueError(f"Could not parse JSON from response: {content[:200]}")
 
 
-def update_ticket_status(conn, ticket_id, status, result=None):
+def update_ticket_status(conn, ticket_id, status, result=None, error_message=None):
+    clauses = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
+    params = [status]
+
     if result is not None:
+        clauses.append("result = ?")
+        params.append(result)
+
+    if error_message is not None:
+        clauses.append("error_message = ?")
+        params.append(error_message)
+    elif status in ("DONE", "REVIEW"):
+        clauses.append("error_message = NULL")
+        clauses.append("retry_count = 0")
+
+    params.append(ticket_id)
+    query = f"UPDATE tickets SET {', '.join(clauses)} WHERE id = ?"
+    conn.execute(query, tuple(params))
+    conn.commit()
+
+
+def handle_ticket_failure(conn, ticket, error_msg):
+    """Handle ticket failure with retry budget and Dead Letter Queue (DLQ)."""
+    fresh_ticket = get_ticket(conn, ticket["id"]) or ticket
+    current_retries = (fresh_ticket["retry_count"] or 0) + 1
+    max_retries = (
+        fresh_ticket["max_retries"]
+        if fresh_ticket["max_retries"] is not None
+        else config.MAX_RETRIES
+    )
+
+    if current_retries >= max_retries:
         conn.execute(
-            "UPDATE tickets SET status = ?, result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (status, result, ticket_id),
+            "UPDATE tickets SET status = 'FAILED', retry_count = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (current_retries, error_msg, ticket["id"]),
         )
+        print(f"  [failed] Ticket #{ticket['id']} exceeded max retries ({current_retries}/{max_retries}): {error_msg}")
     else:
         conn.execute(
-            "UPDATE tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (status, ticket_id),
+            "UPDATE tickets SET status = 'OPEN', retry_count = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (current_retries, error_msg, ticket["id"]),
         )
+        print(f"  [retry] Ticket #{ticket['id']} failed attempt {current_retries}/{max_retries}: {error_msg}. Reverted to OPEN.")
     conn.commit()
 
 
@@ -231,11 +311,11 @@ def update_agent_status(conn, agent_id, status):
     conn.commit()
 
 
-def log_execution(conn, ticket_id, agent_id, prompt_tokens, completion_tokens, cost):
+def log_execution(conn, ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms=0):
     conn.execute(
-        """INSERT INTO execution_logs (ticket_id, agent_id, prompt_tokens, completion_tokens, estimated_cost)
-           VALUES (?, ?, ?, ?, ?)""",
-        (ticket_id, agent_id, prompt_tokens, completion_tokens, cost),
+        """INSERT INTO execution_logs (ticket_id, agent_id, prompt_tokens, completion_tokens, estimated_cost, execution_time_ms)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms),
     )
     conn.commit()
 
@@ -320,6 +400,8 @@ def process_ticket(conn, ticket_id):
         return
     print(f"  [start] Ticket #{ticket_id} -> IN_PROGRESS (agent: {agent['id']})")
 
+    start_time = time.time()
+
     # Build memento context (F-2)
     messages = build_memento_context(conn, agent, ticket)
 
@@ -327,9 +409,11 @@ def process_ticket(conn, ticket_id):
     try:
         response = call_llm(agent, messages)
     except Exception as e:
-        print(f"  [error] LLM call failed: {e}")
-        update_ticket_status(conn, ticket_id, "OPEN")
-        log_execution(conn, ticket_id, agent["id"], 0, 0, 0.0)
+        err_msg = f"LLM call failed: {e}"
+        print(f"  [error] {err_msg}")
+        exec_time_ms = int((time.time() - start_time) * 1000)
+        log_execution(conn, ticket_id, agent["id"], 0, 0, 0.0, exec_time_ms)
+        handle_ticket_failure(conn, ticket, err_msg)
         return
 
     # Extract usage and content.
@@ -339,17 +423,20 @@ def process_ticket(conn, ticket_id):
         prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
         completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
     except (AttributeError, IndexError, TypeError) as e:
-        print(f"  [error] Invalid LLM response: {e}")
-        update_ticket_status(conn, ticket_id, "OPEN")
-        log_execution(conn, ticket_id, agent["id"], 0, 0, 0.0)
+        err_msg = f"Invalid LLM response: {e}"
+        print(f"  [error] {err_msg}")
+        exec_time_ms = int((time.time() - start_time) * 1000)
+        log_execution(conn, ticket_id, agent["id"], 0, 0, 0.0, exec_time_ms)
+        handle_ticket_failure(conn, ticket, err_msg)
         return
 
     # Calculate cost (FR-4.2)
     cost = config.calculate_cost(agent["model_name"], prompt_tokens, completion_tokens)
+    exec_time_ms = int((time.time() - start_time) * 1000)
 
     # Update spend and log execution (FR-4.2)
     update_agent_spend(conn, agent["id"], cost)
-    log_execution(conn, ticket_id, agent["id"], prompt_tokens, completion_tokens, cost)
+    log_execution(conn, ticket_id, agent["id"], prompt_tokens, completion_tokens, cost, exec_time_ms)
 
     # Check if budget now exceeded (FR-4.3)
     updated_agent = get_agent(conn, agent["id"])
@@ -364,23 +451,26 @@ def process_ticket(conn, ticket_id):
     try:
         parsed = parse_agent_response(content)
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"  [error] JSON parse failed: {e}")
-        print(f"  [raw] {content[:300]}")
-        update_ticket_status(conn, ticket_id, "OPEN")
+        err_msg = f"JSON parse failed: {e}"
+        print(f"  [error] {err_msg}")
+        print(f"  [raw] {content[:300] if content else 'None'}")
+        handle_ticket_failure(conn, ticket, err_msg)
         return
 
     # Extract and validate fields
     if not isinstance(parsed, dict):
-        print("  [error] JSON response must be an object")
-        update_ticket_status(conn, ticket_id, "OPEN")
+        err_msg = "JSON response must be an object"
+        print(f"  [error] {err_msg}")
+        handle_ticket_failure(conn, ticket, err_msg)
         return
 
     raw_status = parsed.get("status", "DONE")
     result = parsed.get("result", "")
     new_tickets = parsed.get("new_tickets", [])
     if not isinstance(raw_status, str) or not isinstance(result, str):
-        print("  [error] JSON response contains invalid status or result types")
-        update_ticket_status(conn, ticket_id, "OPEN")
+        err_msg = "JSON response contains invalid status or result types"
+        print(f"  [error] {err_msg}")
+        handle_ticket_failure(conn, ticket, err_msg)
         return
     new_status = raw_status.upper()
 
@@ -389,8 +479,14 @@ def process_ticket(conn, ticket_id):
         new_status = "DONE"
 
     # Update ticket status (FR-3.1)
-    update_ticket_status(conn, ticket_id, new_status, result)
-    print(f"  [done] Ticket #{ticket_id} -> {new_status}")
+    if new_status == "FAILED":
+        fail_msg = result or "Agent declared task FAILED"
+        update_ticket_status(conn, ticket_id, "FAILED", result=result, error_message=fail_msg)
+        print(f"  [done] Ticket #{ticket_id} -> FAILED")
+    else:
+        update_ticket_status(conn, ticket_id, new_status, result=result)
+        print(f"  [done] Ticket #{ticket_id} -> {new_status}")
+
     if result:
         print(f"  [result] {result[:200]}")
 
@@ -398,5 +494,5 @@ def process_ticket(conn, ticket_id):
     if new_tickets:
         spawn_sub_tickets(conn, ticket_id, agent["id"], new_tickets)
 
-    print(f"  [cost] {prompt_tokens}+{completion_tokens} tokens, ${cost:.4f}")
+    print(f"  [cost] {prompt_tokens}+{completion_tokens} tokens, ${cost:.4f} ({exec_time_ms}ms)")
 

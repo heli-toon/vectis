@@ -34,6 +34,10 @@ python3 main.py run
 | `python3 main.py status` | Show system overview (agents, ticket counts, recent activity) |
 | `python3 main.py agents` | List all agents with details |
 | `python3 main.py tickets` | List all tickets with results |
+| `python3 main.py tickets retry <ticket_id>` | Reset ticket retry counter and status back to OPEN |
+| `python3 main.py tickets cancel <ticket_id>` | Cancel ticket and set status to FAILED |
+| `python3 main.py budget topup <agent_id> <amount>` | Increase agent dollar budget limit |
+| `python3 main.py logs <ticket_id>` | Pretty-print execution history, token costs, and latencies |
 | `python3 main.py tree` | Show ticket hierarchy tree |
 | `python3 main.py tree 1` | Show tree for a specific ticket |
 

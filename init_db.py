@@ -90,6 +90,18 @@ def init_database():
     with open(SCHEMA_PATH) as f:
         conn.executescript(f.read())
 
+    # Ensure schema migrations for existing databases
+    migrations = [
+        ("tickets", "retry_count", "INTEGER DEFAULT 0"),
+        ("tickets", "max_retries", "INTEGER DEFAULT 3"),
+        ("tickets", "error_message", "TEXT"),
+        ("execution_logs", "execution_time_ms", "INTEGER DEFAULT 0"),
+    ]
+    for table, col, col_def in migrations:
+        cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
+
     for agent in DEFAULT_AGENTS:
         conn.execute(
             """INSERT OR IGNORE INTO agents

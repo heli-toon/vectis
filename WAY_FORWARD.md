@@ -87,7 +87,7 @@ flowchart LR
 ### Phase 1: Hardening & Core Stability (Weeks 1 – 2)
 **Goal:** Eliminate infinite loops, handle failures deterministically, and establish an automated test suite.
 
-#### 1.1 Schema Enhancements ([schema.sql](file:///home/muhaimin/Documents/vectis/schema.sql))
+#### 1.1 Schema Enhancements ([schema.sql](file:///home/muhaimin/Documents/vectis/schema.sql)) ✅
 - Add `retry_count INTEGER DEFAULT 0` and `max_retries INTEGER DEFAULT 3` to `tickets`.
 - Add `error_message TEXT` to `tickets` to capture parse errors or API failures.
 - Add `execution_time_ms INTEGER DEFAULT 0` to `execution_logs`.
@@ -99,18 +99,18 @@ ALTER TABLE tickets ADD COLUMN error_message TEXT;
 ALTER TABLE execution_logs ADD COLUMN execution_time_ms INTEGER DEFAULT 0;
 ```
 
-#### 1.2 Retry Budget & Dead Letter Queue (DLQ)
+#### 1.2 Retry Budget & Dead Letter Queue (DLQ) ✅
 - Update [`process_ticket`](file:///home/muhaimin/Documents/vectis/agent_engine.py#L292):
   - On LLM failure or JSON parse error: increment `retry_count`.
   - If `retry_count >= max_retries`: transition ticket to `FAILED` with explicit `error_message`.
   - Otherwise, return to `OPEN` with an exponential backoff timestamp.
 
-#### 1.3 Sub-Task Failure Context Injection
+#### 1.3 Sub-Task Failure Context Injection ✅
 - In [`build_memento_context`](file:///home/muhaimin/Documents/vectis/agent_engine.py#L46):
   - Explicitly flag failed sub-tasks under `## Sub-Task Results`.
   - Instruct managers: *"Sub-task #X failed with error: Y. Decide whether to re-assign, modify parameters, or fail the parent task."*
 
-#### 1.4 Comprehensive Test Suite (`tests/`)
+#### 1.4 Comprehensive Test Suite (`tests/`) ✅
 - Setup `pytest` with test fixtures using `:memory:` SQLite databases.
 - Test matrix:
   - Database schema initialization and index verification.
@@ -120,7 +120,7 @@ ALTER TABLE execution_logs ADD COLUMN execution_time_ms INTEGER DEFAULT 0;
   - Budget cutoff and status transitions (`PAUSED_BUDGET`).
   - Startup crash recovery mechanism (`IN_PROGRESS` → `OPEN`).
 
-#### 1.5 Administrative CLI Commands ([main.py](file:///home/muhaimin/Documents/vectis/main.py))
+#### 1.5 Administrative CLI Commands ([main.py](file:///home/muhaimin/Documents/vectis/main.py)) ✅
 - `python main.py budget topup <agent_id> <amount>`: Increase agent budget.
 - `python main.py tickets retry <ticket_id>`: Reset retry counter and status back to `OPEN`.
 - `python main.py tickets cancel <ticket_id>`: Set status to `FAILED`.
@@ -132,21 +132,21 @@ ALTER TABLE execution_logs ADD COLUMN execution_time_ms INTEGER DEFAULT 0;
 **Goal:** Empower agents to read, write, test code, and execute tasks in isolated workspaces while keeping RAM under 35 MB.
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        AGENT WORKSPACE RUNNER                          │
-│                                                                        │
-│   ┌──────────────────┐    JSON Tool Call    ┌──────────────────────┐   │
-│   │   Agent Engine   │ ───────────────────► │  Tool Dispatcher     │   │
-│   │   (LiteLLM)      │ ◄─────────────────── │  (Pure Python Stdlib)│   │
-│   └──────────────────┘    Action Result     └──────────┬───────────┘   │
-│                                                        │               │
-│                        ┌───────────────────────────────┴──────────┐    │
-│                        ▼                                          ▼    │
-│             ┌─────────────────────┐                    ┌─────────────────────┐
-│             │  Workspace File I/O │                    │ Subprocess Sandbox  │
-│             │  (read/write/list)  │                    │ (timeout, capped)   │
-│             └─────────────────────┘                    └─────────────────────┘
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                        AGENT WORKSPACE RUNNER                                  │
+│                                                                                │
+│   ┌──────────────────┐    JSON Tool Call    ┌──────────────────────┐           │
+│   │   Agent Engine   │ ───────────────────► │  Tool Dispatcher     │           │
+│   │   (LiteLLM)      │ ◄─────────────────── │  (Pure Python Stdlib)│           │
+│   └──────────────────┘    Action Result     └──────────┬───────────┘           │
+│                                                        │                       │
+│                        ┌───────────────────────────────┴──────────┐            │
+│                        ▼                                          ▼            │
+│             ┌─────────────────────┐                    ┌─────────────────────┐ │
+│             │  Workspace File I/O │                    │ Subprocess Sandbox  │ │
+│             │  (read/write/list)  │                    │ (timeout, capped)   │ │
+│             └─────────────────────┘                    └─────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 #### 2.1 Ticket Workspaces (`workspaces/ticket_<id>/`)
@@ -273,15 +273,15 @@ stateDiagram-v2
 
 To begin executing this roadmap immediately, the following tasks are prioritized for the next sprint:
 
-- [ ] **Task 1: Add Retry & Error Columns to Schema**
+- [x] ✅ **Task 1: Add Retry & Error Columns to Schema**
   - Update [schema.sql](file:///home/muhaimin/Documents/vectis/schema.sql) and [init_db.py](file:///home/muhaimin/Documents/vectis/init_db.py) with `retry_count`, `max_retries`, and `error_message`.
-- [ ] **Task 2: Implement Failure Guardrails & DLQ**
+- [x] ✅ **Task 2: Implement Failure Guardrails & DLQ**
   - Update [`process_ticket`](file:///home/muhaimin/Documents/vectis/agent_engine.py#L292) to increment `retry_count` and fail tickets gracefully after 3 attempts.
-- [ ] **Task 3: Build the Pytest Core Suite**
+- [x] ✅ **Task 3: Build the Pytest Core Suite**
   - Create `tests/test_schema.py`, `tests/test_engine.py`, and `tests/test_heartbeat.py` with mock LLM calls.
-- [ ] **Task 4: CLI Operations Expansion**
+- [x] ✅ **Task 4: CLI Operations Expansion**
   - Add `main.py budget topup`, `main.py tickets retry`, and `main.py logs <ticket_id>` commands to [main.py](file:///home/muhaimin/Documents/vectis/main.py).
-- [ ] **Task 5: Enable SQLite WAL Mode**
+- [x] ✅ **Task 5: Enable SQLite WAL Mode**
   - Add WAL pragma configurations to [config.py](file:///home/muhaimin/Documents/vectis/config.py) for concurrency readiness.
 
 ---

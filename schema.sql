@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS tickets (
     parent_ticket_id INTEGER,
     status TEXT CHECK(status IN ('OPEN', 'IN_PROGRESS', 'REVIEW', 'DONE', 'FAILED', 'PAUSED_BUDGET')) DEFAULT 'OPEN',
     result TEXT,
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(assigned_to) REFERENCES agents(id),
@@ -38,6 +41,7 @@ CREATE TABLE IF NOT EXISTS execution_logs (
     prompt_tokens INTEGER DEFAULT 0,
     completion_tokens INTEGER DEFAULT 0,
     estimated_cost REAL DEFAULT 0.00,
+    execution_time_ms INTEGER DEFAULT 0,
     executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(ticket_id) REFERENCES tickets(id),
     FOREIGN KEY(agent_id) REFERENCES agents(id)
