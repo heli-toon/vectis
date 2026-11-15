@@ -301,3 +301,160 @@ def test_process_ticket_budget_cutoff(mem_db):
 
     assert ticket["status"] == "PAUSED_BUDGET"
     assert agent["status"] == "PAUSED_BUDGET"
+
+
+def test_process_ticket_with_tool_calls(mem_db, make_mock_response, tmp_path, monkeypatch):
+    """Verify tool calls in LLM response are executed in ticket workspace and logged."""
+    import json
+    import os
+    import config
+    import tools
+    monkeypatch.setattr(config, "WORKSPACES_DIR", str(tmp_path / "workspaces"))
+
+    cursor = mem_db.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by) VALUES (?, ?, ?, ?)",
+        ("Dev Build Task", "Write module", "dev", "ceo"),
+    )
+    ticket_id = cursor.lastrowid
+
+    payload = json.dumps({
+        "status": "DONE",
+        "result": "Created app.py and verified syntax",
+        "tool_calls": [
+            {"tool": "file_write", "args": {"path": "app.py", "content": "print('hello from engine')\n"}},
+            {"tool": "execute_command", "args": {"command": "python3 app.py"}},
+        ],
+    })
+    mock_resp = make_mock_response(payload)
+
+    with patch("agent_engine.call_llm", return_value=mock_resp):
+        agent_engine.process_ticket(mem_db, ticket_id)
+
+    ticket = agent_engine.get_ticket(mem_db, ticket_id)
+    assert ticket["status"] == "DONE"
+    assert ticket["result"] == "Created app.py and verified syntax"
+
+    # Verify file actually created in workspace
+    ws_dir = tools.get_ticket_workspace(mem_db, ticket_id)
+    created_file = os.path.join(ws_dir, "app.py")
+    assert os.path.exists(created_file)
+    with open(created_file) as f:
+        assert "hello from engine" in f.read()
+
+    # Check execution logs contain tool_calls
+    logs = agent_engine.get_execution_logs(mem_db, ticket_id)
+    assert len(logs) == 1
+    assert logs[0]["tool_calls"] is not None
+    tc_data = json.loads(logs[0]["tool_calls"])
+    assert len(tc_data) == 2
+    assert tc_data[0]["tool"] == "file_write"
+    assert tc_data[0]["success"] is True
+    assert tc_data[1]["tool"] == "execute_command"
+    assert tc_data[1]["success"] is True
+    assert "hello from engine" in tc_data[1]["stdout"]
+
+
+def test_process_ticket_in_progress_state(mem_db, make_mock_response, tmp_path, monkeypatch):
+    """Verify status IN_PROGRESS re-queues ticket to OPEN for multi-tick continuation."""
+    import json
+    import config
+    monkeypatch.setattr(config, "WORKSPACES_DIR", str(tmp_path / "workspaces"))
+
+    cursor = mem_db.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by) VALUES (?, ?, ?, ?)",
+        ("Multi-tick Task", "Draft then test", "dev", "ceo"),
+    )
+    ticket_id = cursor.lastrowid
+
+    payload = json.dumps({
+        "status": "IN_PROGRESS",
+        "result": "Drafted implementation, testing next tick",
+        "tool_calls": [
+            {"tool": "file_write", "args": {"path": "module.py", "content": "VAL = 42\n"}},
+        ],
+    })
+    mock_resp = make_mock_response(payload)
+
+    with patch("agent_engine.call_llm", return_value=mock_resp):
+        agent_engine.process_ticket(mem_db, ticket_id)
+
+    ticket = agent_engine.get_ticket(mem_db, ticket_id)
+    # Re-queued to OPEN so next heartbeat tick picks it up
+    assert ticket["status"] == "OPEN"
+    assert ticket["result"] == "Drafted implementation, testing next tick"
+    assert ticket["retry_count"] == 0
+    assert ticket["error_message"] is None
+
+
+def test_build_memento_context_includes_workspace_and_tools(mem_db, tmp_path, monkeypatch):
+    """Verify workspace information, existing files, and tools are injected into memento context."""
+    import config
+    import tools
+    monkeypatch.setattr(config, "WORKSPACES_DIR", str(tmp_path / "workspaces"))
+
+    dev = agent_engine.get_agent(mem_db, "dev")
+    cursor = mem_db.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by, result) VALUES (?, ?, ?, ?, ?)",
+        ("Dev Task", "Work in workspace", "dev", "ceo", "Step 1 complete"),
+    )
+    ticket_id = cursor.lastrowid
+    ticket = agent_engine.get_ticket(mem_db, ticket_id)
+
+    # Pre-create a file in the workspace
+    ws_dir = tools.get_ticket_workspace(mem_db, ticket_id)
+    tools.file_write(ws_dir, "lib.py", "X = 1\n")
+
+    messages = agent_engine.build_memento_context(mem_db, dev, ticket)
+    prompt = messages[0]["content"]
+
+    assert "## Workspace" in prompt
+    assert f"ticket_{ticket_id}" in prompt
+    assert "lib.py" in prompt
+    assert "## Available Tools" in prompt
+    assert "file_write" in prompt
+    assert "file_read" in prompt
+    assert "execute_command" in prompt
+    assert "directory_list" in prompt
+    assert '"tool_calls"' in prompt
+    assert "Current progress: Step 1 complete" in prompt
+
+
+def test_subticket_workspace_inheritance(mem_db, tmp_path, monkeypatch):
+    """Verify child ticket inherits root ticket workspace and can access its artifacts."""
+    import config
+    import tools
+    monkeypatch.setattr(config, "WORKSPACES_DIR", str(tmp_path / "workspaces"))
+
+    # Root ticket by CEO
+    cur = mem_db.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by) VALUES ('Project Root', 'desc', 'ceo', 'human')"
+    )
+    root_id = cur.lastrowid
+
+    # Subtask assigned to Dev
+    cur = mem_db.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by, parent_ticket_id) VALUES ('Dev Work', 'desc', 'dev', 'ceo', ?)",
+        (root_id,),
+    )
+    dev_ticket_id = cur.lastrowid
+
+    # Reviewer subtask
+    cur = mem_db.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by, parent_ticket_id) VALUES ('QA Review', 'desc', 'reviewer', 'ceo', ?)",
+        (root_id,),
+    )
+    qa_ticket_id = cur.lastrowid
+
+    dev_ws = tools.get_ticket_workspace(mem_db, dev_ticket_id)
+    qa_ws = tools.get_ticket_workspace(mem_db, qa_ticket_id)
+
+    assert dev_ws == qa_ws
+
+    # Dev writes deliverable
+    tools.file_write(dev_ws, "deliverable.md", "# Product Deliverable\n")
+
+    # QA reviewer reads deliverable
+    qa_read = tools.file_read(qa_ws, "deliverable.md")
+    assert qa_read["success"] is True
+    assert "# Product Deliverable" in qa_read["content"]
+

@@ -267,6 +267,15 @@ def cmd_logs(args):
 
         latency_str = f"{ms}ms" if ms else "N/A"
         print(f"  {i:<4} {log['agent_id']:<12} {prompt:>8} {comp:>8} {total:>8} ${cost:>9.4f} {latency_str:>10} {exec_at:<20}")
+        if "tool_calls" in log.keys() and log["tool_calls"]:
+            try:
+                import json
+                tc_list = json.loads(log["tool_calls"])
+                if tc_list:
+                    tc_desc = [f"{tc.get('tool')}:{'ok' if tc.get('success') else 'fail'}" for tc in tc_list]
+                    print(f"       tools: {', '.join(tc_desc)}")
+            except Exception:
+                pass
 
     print("  " + "-" * 88)
     print(f"  {'TOTAL':<16} {total_prompt:>8} {total_comp:>8} {total_prompt + total_comp:>8} ${total_cost:>9.4f} {total_ms:>8}ms")
@@ -310,6 +319,36 @@ def cmd_tree(args):
     conn.close()
 
 
+def cmd_workspace(args):
+    ensure_db()
+    conn = config.get_db_connection()
+    ticket = conn.execute("SELECT * FROM tickets WHERE id = ?", (args.ticket_id,)).fetchone()
+    if not ticket:
+        print(f"Ticket #{args.ticket_id} not found.")
+        conn.close()
+        return
+
+    from tools import get_ticket_workspace, get_root_ticket_id, directory_list
+    root_id = get_root_ticket_id(conn, args.ticket_id)
+    ws_path = get_ticket_workspace(conn, args.ticket_id, create=False)
+    print(f"\nWorkspace for Ticket #{ticket['id']} (Root Ticket #{root_id}):")
+    print(f"  Path: {ws_path}")
+    if not os.path.exists(ws_path):
+        print("  Status: Not created on disk yet.")
+    else:
+        listing = directory_list(ws_path)
+        entries = listing.get("entries", [])
+        if not entries:
+            print("  Status: Directory exists (empty).")
+        else:
+            print(f"  Status: {len(entries)} file(s)/directory(ies) found:")
+            for e in entries:
+                t_str = "[DIR]" if e["type"] == "directory" else f"[{e['size']}B]"
+                print(f"    {t_str:<10} {e['path']}")
+    print()
+    conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="vectis",
@@ -350,6 +389,9 @@ def main():
     tree_parser = subparsers.add_parser("tree", help="Show ticket hierarchy tree")
     tree_parser.add_argument("ticket_id", type=int, nargs="?", help="Root ticket ID (default: all roots)")
 
+    ws_parser = subparsers.add_parser("workspace", help="Inspect workspace for a ticket")
+    ws_parser.add_argument("ticket_id", type=int, help="Ticket ID")
+
     args = parser.parse_args()
 
     commands = {
@@ -362,6 +404,7 @@ def main():
         "budget": cmd_budget,
         "logs": cmd_logs,
         "tree": cmd_tree,
+        "workspace": cmd_workspace,
     }
 
     handler = commands.get(args.command)

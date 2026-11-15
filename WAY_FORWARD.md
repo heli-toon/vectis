@@ -128,7 +128,7 @@ ALTER TABLE execution_logs ADD COLUMN execution_time_ms INTEGER DEFAULT 0;
 
 ---
 
-### Phase 2: Sandboxed Tool Execution & Workspaces (Weeks 3 – 4)
+### Phase 2: Sandboxed Tool Execution & Workspaces (Weeks 3 – 4) ✅
 **Goal:** Empower agents to read, write, test code, and execute tasks in isolated workspaces while keeping RAM under 35 MB.
 
 ```
@@ -149,20 +149,21 @@ ALTER TABLE execution_logs ADD COLUMN execution_time_ms INTEGER DEFAULT 0;
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 2.1 Ticket Workspaces (`workspaces/ticket_<id>/`)
+#### 2.1 Ticket Workspaces (`workspaces/ticket_<id>/`) ✅
 - Each root ticket receives an isolated local directory on disk: `workspaces/ticket_<id>/`.
 - Sub-tickets inherit their parent’s workspace, enabling developers and reviewers to inspect the same artifacts.
+- Enforced strict path traversal and symlink escape defenses.
 
-#### 2.2 Built-in Zero-Dependency Tools
+#### 2.2 Built-in Zero-Dependency Tools ([tools.py](file:///home/muhaimin/Documents/vectis/tools.py)) ✅
 Implement pure Python standard-library tools:
 1. `file_write(path, content)`: Safely writes deliverables (code, markdown, json) within the workspace boundary.
-2. `file_read(path)`: Reads workspace files for review or modification.
+2. `file_read(path)`: Reads workspace files for review or modification with size caps.
 3. `directory_list(path)`: Inspects workspace file trees.
 4. `execute_command(command, timeout_sec=30)`:
    - Uses `subprocess.run` with strict timeout, sandboxed cwd, and output byte limits (e.g., max 10KB output).
-   - Allows the developer agent to run linters, tests, or build scripts.
+   - Allows the developer agent to run linters, tests, or build scripts safely.
 
-#### 2.3 Memento Tool Calling Schema
+#### 2.3 Memento Tool Calling Schema & Multi-Turn State ✅
 - Expose tools to agents via prompt-guided JSON response format:
 ```json
 {
@@ -174,6 +175,8 @@ Implement pure Python standard-library tools:
   "result": "Drafted initial implementation, running tests next tick."
 }
 ```
+- Multi-tick tasks transition from `IN_PROGRESS` back to `OPEN` for subsequent ticks.
+- Dynamic memento context injects existing workspace file trees and recent tool execution history.
 
 ---
 
@@ -269,10 +272,9 @@ stateDiagram-v2
 
 ---
 
-## 5. Immediate Action Plan (Sprint 1 Checklist)
+## 5. Action Plan & Sprint Execution Checklists
 
-To begin executing this roadmap immediately, the following tasks are prioritized for the next sprint:
-
+### Sprint 1: Phase 1 — Hardening & Core Stability
 - [x] ✅ **Task 1: Add Retry & Error Columns to Schema**
   - Update [schema.sql](file:///home/muhaimin/Documents/vectis/schema.sql) and [init_db.py](file:///home/muhaimin/Documents/vectis/init_db.py) with `retry_count`, `max_retries`, and `error_message`.
 - [x] ✅ **Task 2: Implement Failure Guardrails & DLQ**
@@ -284,7 +286,19 @@ To begin executing this roadmap immediately, the following tasks are prioritized
 - [x] ✅ **Task 5: Enable SQLite WAL Mode**
   - Add WAL pragma configurations to [config.py](file:///home/muhaimin/Documents/vectis/config.py) for concurrency readiness.
 
+### Sprint 2: Phase 2 — Sandboxed Tool Execution & Workspaces
+- [x] ✅ **Task 6: Ticket Workspaces & Path Traversal Guardrails**
+  - Implement `get_ticket_workspace`, `get_root_ticket_id`, and `resolve_workspace_path` in `tools.py` with strict path traversal and symlink boundary defenses.
+- [x] ✅ **Task 7: Built-in Zero-Dependency Tools**
+  - Implement `file_write`, `file_read`, `directory_list`, and `execute_command` with timeout enforcement, sandboxed cwd, and output byte limits (max 10KB).
+- [x] ✅ **Task 8: Tool Dispatcher & Memento Tool Calling Schema**
+  - Build `dispatch_tool` and `execute_tool_calls` in `tools.py`. Integrate prompt instructions and response schema for `tool_calls`.
+- [x] ✅ **Task 9: Multi-Turn Execution & Tool Context Injection in Memento**
+  - Support `IN_PROGRESS` multi-tick re-queuing, workspace file listings, and previous tool execution history injection into memento context.
+- [x] ✅ **Task 10: Tool Test Suite & CLI Workspace Operations**
+  - Create `tests/test_tools.py`, extend `tests/test_engine.py` and `tests/test_cli.py` (49 passing tests), and add `python main.py workspace <ticket_id>`.
+
 ---
 
 *Document Author: Vectis Core Architecture Team*  
-*Last Updated: 2026-11-09*
+*Last Updated: 2026-11-14*

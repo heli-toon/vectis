@@ -1,10 +1,12 @@
 """Vectis agent engine: memento context builder, LiteLLM wrapper, and state machine."""
 
 import json
+import os
 import re
 import time
 import litellm
 import config
+from tools import get_ticket_workspace, directory_list, execute_tool_calls
 
 litellm.set_verbose = False
 litellm.telemetry = False
@@ -88,6 +90,8 @@ def build_memento_context(conn, agent, ticket):
         f"- Description: {ticket['description'] or 'N/A'}",
         f"- Created by: {ticket['created_by']}",
     ]
+    if "result" in ticket.keys() and ticket["result"]:
+        ticket_lines.append(f"- Current progress: {ticket['result']}")
 
     # Parent ticket context
     if ticket["parent_ticket_id"]:
@@ -100,6 +104,29 @@ def build_memento_context(conn, agent, ticket):
                 ticket_lines.append(f"- Parent result: {parent['result']}")
 
     sections.append("\n## Current Assignment\n" + "\n".join(ticket_lines))
+
+    # Workspace context
+    workspace_dir = get_ticket_workspace(conn, ticket["id"], create=True)
+    try:
+        rel_workspace = os.path.relpath(workspace_dir, os.getcwd())
+    except ValueError:
+        rel_workspace = workspace_dir
+
+    workspace_lines = [f"- Path: {rel_workspace}"]
+    listing = directory_list(workspace_dir)
+    entries = listing.get("entries", [])
+    if entries:
+        file_summary = ", ".join(
+            f"{e['path']} ({e['size']}B)" if e["type"] == "file" else f"{e['path']}/"
+            for e in entries[:10]
+        )
+        if len(entries) > 10:
+            file_summary += f" ... (+{len(entries)-10} more)"
+        workspace_lines.append(f"- Existing files: {file_summary}")
+    else:
+        workspace_lines.append("- Existing files: (none)")
+
+    sections.append("\n## Workspace\n" + "\n".join(workspace_lines))
 
     # Child ticket results
     children = get_child_tickets(conn, ticket["id"])
@@ -131,26 +158,73 @@ def build_memento_context(conn, agent, ticket):
             time_part = ""
             if "execution_time_ms" in log.keys() and log["execution_time_ms"]:
                 time_part = f", {log['execution_time_ms']}ms"
-            log_lines.append(
+            line = (
                 f"- Attempt {i + 1}: {log['prompt_tokens']} input + {log['completion_tokens']} output tokens, "
                 f"${log['estimated_cost']:.4f}{time_part}"
             )
+            if "tool_calls" in log.keys() and log["tool_calls"]:
+                try:
+                    tc_list = json.loads(log["tool_calls"])
+                    if tc_list:
+                        tc_items = []
+                        for tc in tc_list:
+                            t_name = tc.get("tool", "tool")
+                            t_succ = "success" if tc.get("success") else f"failed ({tc.get('error', 'error')})"
+                            if t_name == "execute_command":
+                                out_snip = (tc.get("stdout") or tc.get("stderr") or "").strip()
+                                if len(out_snip) > 80:
+                                    out_snip = out_snip[:80] + "..."
+                                tc_items.append(f"  * [tool] {t_name} ('{tc.get('command')}'): {t_succ} -> {out_snip}")
+                            elif t_name == "file_read":
+                                cont_snip = (tc.get("content") or "").strip()
+                                if len(cont_snip) > 80:
+                                    cont_snip = cont_snip[:80] + "..."
+                                tc_items.append(f"  * [tool] {t_name} ('{tc.get('path')}'): {t_succ} -> {cont_snip}")
+                            else:
+                                tc_items.append(f"  * [tool] {t_name} ('{tc.get('path', '')}'): {t_succ}")
+                        line += "\n" + "\n".join(tc_items)
+                except Exception:
+                    pass
+            log_lines.append(line)
         sections.append("\n## Execution History\n" + "\n".join(log_lines))
+
+    # Available tools
+    tools_section = (
+        "\n## Available Tools\n"
+        "You can execute actions in your ticket workspace by providing a 'tool_calls' list in your JSON response.\n"
+        "Supported tools:\n"
+        "1. file_write(path, content): Write text or code to a file inside the workspace.\n"
+        "   Args: {\"path\": \"relative/path/to/file.ext\", \"content\": \"file contents\"}\n"
+        "2. file_read(path): Read the contents of an existing file from the workspace.\n"
+        "   Args: {\"path\": \"relative/path/to/file.ext\"}\n"
+        "3. directory_list(path=\".\"): Inspect files and folders inside the workspace.\n"
+        "   Args: {\"path\": \".\"}\n"
+        "4. execute_command(command, timeout_sec=30): Execute a shell command inside the workspace directory.\n"
+        "   Args: {\"command\": \"python3 -m unittest\", \"timeout_sec\": 30}"
+    )
+    sections.append(tools_section)
 
     # Response format instructions
     instructions = (
         "\n## Response Format\n"
         "Respond with a single JSON object containing exactly these fields:\n"
         "{\n"
-        '  "status": "DONE" | "REVIEW" | "FAILED",\n'
+        '  "status": "DONE" | "IN_PROGRESS" | "REVIEW" | "FAILED",\n'
         '  "result": "Your deliverable - a summary of work completed or output produced",\n'
+        '  "tool_calls": [\n'
+        '    {"tool": "file_write", "args": {"path": "app.py", "content": "..."}}\n'
+        "  ],\n"
         '  "new_tickets": [\n'
         '    {"title": "Sub-task title", "description": "Detailed description", "assigned_to": "agent_id"}\n'
         "  ]\n"
         "}\n\n"
         "Rules:\n"
-        '- "status" must be one of: DONE (task complete), REVIEW (delegated, awaiting sub-task completion), '
-        "FAILED (cannot complete).\n"
+        '- "status" must be one of:\n'
+        '  * DONE: task complete.\n'
+        '  * IN_PROGRESS: task is progressing, continue on next tick.\n'
+        '  * REVIEW: delegated, awaiting sub-task completion.\n'
+        '  * FAILED: cannot complete.\n'
+        '- "tool_calls" can be an empty array if no tool action is needed.\n'
         '- "new_tickets" can be an empty array if no delegation is needed.\n'
         '- "assigned_to" must be the ID of one of your team members listed above.\n'
         "- Respond with ONLY the JSON object. No markdown, no explanation outside the JSON."
@@ -252,7 +326,7 @@ def update_ticket_status(conn, ticket_id, status, result=None, error_message=Non
     if error_message is not None:
         clauses.append("error_message = ?")
         params.append(error_message)
-    elif status in ("DONE", "REVIEW"):
+    elif status in ("DONE", "REVIEW", "OPEN"):
         clauses.append("error_message = NULL")
         clauses.append("retry_count = 0")
 
@@ -311,12 +385,21 @@ def update_agent_status(conn, agent_id, status):
     conn.commit()
 
 
-def log_execution(conn, ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms=0):
-    conn.execute(
-        """INSERT INTO execution_logs (ticket_id, agent_id, prompt_tokens, completion_tokens, estimated_cost, execution_time_ms)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms),
-    )
+def log_execution(conn, ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms=0, tool_calls=None):
+    tool_calls_json = json.dumps(tool_calls) if tool_calls else None
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(execution_logs)").fetchall()]
+    if "tool_calls" in cols:
+        conn.execute(
+            """INSERT INTO execution_logs (ticket_id, agent_id, prompt_tokens, completion_tokens, estimated_cost, execution_time_ms, tool_calls)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms, tool_calls_json),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO execution_logs (ticket_id, agent_id, prompt_tokens, completion_tokens, estimated_cost, execution_time_ms)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (ticket_id, agent_id, prompt_tokens, completion_tokens, cost, execution_time_ms),
+        )
     conn.commit()
 
 
@@ -436,7 +519,6 @@ def process_ticket(conn, ticket_id):
 
     # Update spend and log execution (FR-4.2)
     update_agent_spend(conn, agent["id"], cost)
-    log_execution(conn, ticket_id, agent["id"], prompt_tokens, completion_tokens, cost, exec_time_ms)
 
     # Check if budget now exceeded (FR-4.3)
     updated_agent = get_agent(conn, agent["id"])
@@ -454,6 +536,7 @@ def process_ticket(conn, ticket_id):
         err_msg = f"JSON parse failed: {e}"
         print(f"  [error] {err_msg}")
         print(f"  [raw] {content[:300] if content else 'None'}")
+        log_execution(conn, ticket_id, agent["id"], prompt_tokens, completion_tokens, cost, exec_time_ms)
         handle_ticket_failure(conn, ticket, err_msg)
         return
 
@@ -461,28 +544,60 @@ def process_ticket(conn, ticket_id):
     if not isinstance(parsed, dict):
         err_msg = "JSON response must be an object"
         print(f"  [error] {err_msg}")
+        log_execution(conn, ticket_id, agent["id"], prompt_tokens, completion_tokens, cost, exec_time_ms)
         handle_ticket_failure(conn, ticket, err_msg)
         return
 
     raw_status = parsed.get("status", "DONE")
     result = parsed.get("result", "")
     new_tickets = parsed.get("new_tickets", [])
+    tool_calls = parsed.get("tool_calls", [])
+
     if not isinstance(raw_status, str) or not isinstance(result, str):
         err_msg = "JSON response contains invalid status or result types"
         print(f"  [error] {err_msg}")
+        log_execution(conn, ticket_id, agent["id"], prompt_tokens, completion_tokens, cost, exec_time_ms)
         handle_ticket_failure(conn, ticket, err_msg)
         return
     new_status = raw_status.upper()
 
-    valid_statuses = {"DONE", "REVIEW", "FAILED"}
+    valid_statuses = {"DONE", "IN_PROGRESS", "REVIEW", "FAILED"}
     if new_status not in valid_statuses:
         new_status = "DONE"
+
+    # Execute tool calls if any
+    tool_results = []
+    if tool_calls:
+        workspace_dir = get_ticket_workspace(conn, ticket_id, create=True)
+        tool_results = execute_tool_calls(workspace_dir, tool_calls)
+        for tr in tool_results:
+            t_name = tr.get("tool", "unknown")
+            if tr.get("success"):
+                print(f"  [tool] {t_name}: success")
+            else:
+                print(f"  [tool] {t_name}: failed -> {tr.get('error', 'unknown error')}")
+
+    # Record execution log with tool results
+    log_execution(
+        conn,
+        ticket_id,
+        agent["id"],
+        prompt_tokens,
+        completion_tokens,
+        cost,
+        exec_time_ms,
+        tool_calls=tool_results,
+    )
 
     # Update ticket status (FR-3.1)
     if new_status == "FAILED":
         fail_msg = result or "Agent declared task FAILED"
         update_ticket_status(conn, ticket_id, "FAILED", result=result, error_message=fail_msg)
         print(f"  [done] Ticket #{ticket_id} -> FAILED")
+    elif new_status == "IN_PROGRESS":
+        # Re-queue ticket as OPEN so next heartbeat tick continues execution
+        update_ticket_status(conn, ticket_id, "OPEN", result=result)
+        print(f"  [progress] Ticket #{ticket_id} continuing in progress (re-queued as OPEN)")
     else:
         update_ticket_status(conn, ticket_id, new_status, result=result)
         print(f"  [done] Ticket #{ticket_id} -> {new_status}")

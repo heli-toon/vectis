@@ -96,6 +96,7 @@ def init_database():
         ("tickets", "max_retries", "INTEGER DEFAULT 3"),
         ("tickets", "error_message", "TEXT"),
         ("execution_logs", "execution_time_ms", "INTEGER DEFAULT 0"),
+        ("execution_logs", "tool_calls", "TEXT"),
     ]
     for table, col, col_def in migrations:
         cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]

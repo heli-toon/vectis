@@ -10,6 +10,12 @@ os.environ.setdefault("LITELLM_TELEMETRY", "False")
 # Database
 DB_PATH = os.environ.get("VECTIS_DB_PATH", "vectis.db")
 
+# Workspaces & Tool Execution
+WORKSPACES_DIR = os.environ.get("VECTIS_WORKSPACES_DIR", "workspaces")
+DEFAULT_COMMAND_TIMEOUT = int(os.environ.get("VECTIS_COMMAND_TIMEOUT", "30"))
+MAX_COMMAND_OUTPUT_BYTES = int(os.environ.get("VECTIS_MAX_OUTPUT_BYTES", "10240"))
+MAX_FILE_READ_BYTES = int(os.environ.get("VECTIS_MAX_READ_BYTES", "102400"))
+
 # Heartbeat
 POLL_INTERVAL_SECONDS = int(os.environ.get("VECTIS_POLL_INTERVAL", "30"))
 MAX_CONCURRENT_TASKS = int(os.environ.get("VECTIS_MAX_CONCURRENT", "1"))

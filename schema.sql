@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS execution_logs (
     completion_tokens INTEGER DEFAULT 0,
     estimated_cost REAL DEFAULT 0.00,
     execution_time_ms INTEGER DEFAULT 0,
+    tool_calls TEXT,
     executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(ticket_id) REFERENCES tickets(id),
     FOREIGN KEY(agent_id) REFERENCES agents(id)

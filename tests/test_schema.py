@@ -23,6 +23,7 @@ def test_schema_columns(mem_db):
 
     logs_cols = {row["name"] for row in mem_db.execute("PRAGMA table_info(execution_logs)").fetchall()}
     assert "execution_time_ms" in logs_cols
+    assert "tool_calls" in logs_cols
 
 
 def test_schema_indexes(mem_db):
@@ -107,6 +108,7 @@ def test_schema_migration_idempotent(tmp_path, monkeypatch):
 
     logs_cols = {row["name"] for row in verify_conn.execute("PRAGMA table_info(execution_logs)").fetchall()}
     assert "execution_time_ms" in logs_cols
+    assert "tool_calls" in logs_cols
     verify_conn.close()
 
 

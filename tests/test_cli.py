@@ -153,3 +153,64 @@ def test_cli_logs_display(tmp_path, monkeypatch, capsys):
     assert "75" in out.out
     assert "120ms" in out.out
     assert "TOTAL" in out.out
+
+
+def test_cli_workspace_display(tmp_path, monkeypatch, capsys):
+    """Verify workspace CLI displays path and files."""
+    import os
+    import tools
+    db_file = str(tmp_path / "cli_ws_test.db")
+    ws_dir = str(tmp_path / "workspaces")
+    monkeypatch.setattr(config, "DB_PATH", db_file)
+    monkeypatch.setattr(config, "WORKSPACES_DIR", ws_dir)
+
+    run_cli_args(["init"], monkeypatch, capsys)
+
+    conn = config.get_db_connection()
+    cursor = conn.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by) VALUES ('WS Task', 'desc', 'dev', 'ceo')"
+    )
+    ticket_id = cursor.lastrowid
+    conn.commit()
+
+    # Pre-create a file in ticket workspace
+    ticket_ws = tools.get_ticket_workspace(conn, ticket_id, create=True)
+    tools.file_write(ticket_ws, "deliverable.py", "print('hello')\n")
+    conn.close()
+
+    out = run_cli_args(["workspace", str(ticket_id)], monkeypatch, capsys)
+    assert f"Workspace for Ticket #{ticket_id}" in out.out
+    assert ticket_ws in out.out
+    assert "deliverable.py" in out.out
+
+
+def test_cli_logs_with_tool_calls(tmp_path, monkeypatch, capsys):
+    """Verify logs CLI prints tool execution summaries."""
+    import json
+    db_file = str(tmp_path / "cli_tool_logs_test.db")
+    monkeypatch.setattr(config, "DB_PATH", db_file)
+
+    run_cli_args(["init"], monkeypatch, capsys)
+
+    conn = config.get_db_connection()
+    cursor = conn.execute(
+        "INSERT INTO tickets (title, description, assigned_to, created_by, status) "
+        "VALUES ('Tool Task', 'Tools used', 'dev', 'ceo', 'DONE')"
+    )
+    ticket_id = cursor.lastrowid
+
+    tool_data = json.dumps([
+        {"tool": "file_write", "success": True},
+        {"tool": "execute_command", "success": True},
+    ])
+    conn.execute(
+        "INSERT INTO execution_logs (ticket_id, agent_id, prompt_tokens, completion_tokens, estimated_cost, execution_time_ms, tool_calls) "
+        "VALUES (?, 'dev', 300, 100, 0.001, 150, ?)",
+        (ticket_id, tool_data),
+    )
+    conn.commit()
+    conn.close()
+
+    out = run_cli_args(["logs", str(ticket_id)], monkeypatch, capsys)
+    assert "tools: file_write:ok, execute_command:ok" in out.out
+
