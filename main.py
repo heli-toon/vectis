@@ -21,11 +21,12 @@ def cmd_init(args):
 def cmd_run(args):
     from heartbeat import run_daemon, run_single_heartbeat
     ensure_db()
+    workers = getattr(args, "workers", None)
     if args.once:
-        run_single_heartbeat()
+        run_single_heartbeat(max_workers=workers)
     else:
         interval = args.interval if args.interval else config.POLL_INTERVAL_SECONDS
-        run_daemon(interval)
+        run_daemon(interval, max_workers=workers)
 
 
 def cmd_seed(args):
@@ -83,6 +84,13 @@ def cmd_status(args):
         print("\nRecent Activity:")
         for t in recent:
             print(f"  #{t['id']} [{t['status']}] {t['title']} ({t['assigned_to']})")
+
+    # Engine Configuration
+    print("\nEngine Configuration:")
+    print(
+        f"  Workers: {config.MAX_WORKERS} | Poll Interval: {config.POLL_INTERVAL_SECONDS}s | "
+        f"DB Timeout: {config.DB_TIMEOUT}s"
+    )
 
     print()
     conn.close()
@@ -361,6 +369,7 @@ def main():
     run_parser = subparsers.add_parser("run", help="Start the heartbeat daemon")
     run_parser.add_argument("--once", action="store_true", help="Run a single heartbeat and exit")
     run_parser.add_argument("--interval", type=int, help="Override poll interval (seconds)")
+    run_parser.add_argument("--workers", type=int, default=None, help="Override worker thread count (default: 4)")
 
     seed_parser = subparsers.add_parser("seed", help="Seed a root ticket")
     seed_parser.add_argument("title", help="Ticket title")

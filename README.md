@@ -30,6 +30,7 @@ python3 main.py run
 | `python3 main.py run` | Start the heartbeat daemon (polls every 30s) |
 | `python3 main.py run --once` | Run a single heartbeat tick and exit |
 | `python3 main.py run --interval 10` | Run with custom poll interval (seconds) |
+| `python3 main.py run --workers 4` | Run with custom worker thread pool size |
 | `python3 main.py seed "Title" --desc "..." --assign ceo` | Seed a root ticket |
 | `python3 main.py status` | Show system overview (agents, ticket counts, recent activity) |
 | `python3 main.py agents` | List all agents with details |
@@ -38,6 +39,7 @@ python3 main.py run
 | `python3 main.py tickets cancel <ticket_id>` | Cancel ticket and set status to FAILED |
 | `python3 main.py budget topup <agent_id> <amount>` | Increase agent dollar budget limit |
 | `python3 main.py logs <ticket_id>` | Pretty-print execution history, token costs, and latencies |
+| `python3 main.py workspace <ticket_id>` | Inspect file workspace deliverables for a ticket |
 | `python3 main.py tree` | Show ticket hierarchy tree |
 | `python3 main.py tree 1` | Show tree for a specific ticket |
 
@@ -94,8 +96,10 @@ Environment variables (all optional, with defaults):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VECTIS_DB_PATH` | `vectis.db` | SQLite database path |
+| `VECTIS_DB_TIMEOUT` | `30.0` | SQLite driver busy timeout (seconds) |
 | `VECTIS_POLL_INTERVAL` | `30` | Heartbeat poll interval (seconds) |
-| `VECTIS_MAX_CONCURRENT` | `1` | Max tickets processed per heartbeat |
+| `VECTIS_MAX_WORKERS` | `4` | Max concurrent worker threads in heartbeat |
+| `VECTIS_MAX_CONCURRENT` | `4` | Alias for `VECTIS_MAX_WORKERS` |
 | `VECTIS_TEMPERATURE` | `0.3` | LLM temperature |
 | `VECTIS_MAX_TOKENS` | `4096` | Max tokens per LLM call |
 | `VECTIS_MAX_RETRIES` | `3` | LLM retry count |
