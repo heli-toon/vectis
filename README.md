@@ -42,6 +42,36 @@ python3 main.py run
 | `python3 main.py workspace <ticket_id>` | Inspect file workspace deliverables for a ticket |
 | `python3 main.py tree` | Show ticket hierarchy tree |
 | `python3 main.py tree 1` | Show tree for a specific ticket |
+| `python3 main.py ui` | Start the zero-dependency embedded web dashboard (`http://127.0.0.1:8080`) |
+| `python3 main.py ui --port 9000 --open` | Run dashboard on custom port and open in default browser |
+| `python3 main.py monitor` | Start the live curses terminal dashboard over SSH |
+| `python3 main.py monitor --interval 1.0` | Run terminal monitor with 1-second refresh rate |
+
+## Observability & Dashboards
+
+Vectis includes two zero-dependency observability interfaces built strictly using Python standard library:
+
+### 1. Embedded Web Dashboard
+Launch with:
+```bash
+python3 main.py ui --port 8080
+```
+- **Live Org Chart:** Visual agent hierarchy, status badges, active models, and real-time spend vs budget meters.
+- **Ticket Dependency Graph:** Interactive tree/DAG showing parent objectives, delegated child sub-tasks, retries, and deliverable status.
+- **Real-Time Execution Logs:** Live stream of token consumption, LLM transport costs, latency (ms), and expandable tool call audit logs.
+- **Workspace File Explorer:** Built-in code & artifact viewer to inspect files produced in `workspaces/ticket_<id>/`.
+- **Operator Controls:** Web forms and modal dialogs to seed tasks, top up agent budgets, and pause/resume agents.
+- **Zero Dependencies:** Pure Vanilla HTML5, CSS3, and ES6 JavaScript. No Node.js, npm, React, or external CDNs; functions seamlessly in airgapped environments.
+
+### 2. Live Terminal User Interface (TUI) Monitor
+Launch with:
+```bash
+python3 main.py monitor
+```
+- Designed for lightweight SSH administration and headless VPS instances.
+- Renders live agent budget progress meters (`[████░░░░░░] 40%`), ticket status distribution (`OPEN`, `IN_PROGRESS`, `DONE`, `FAILED`), active tasks, and recent execution logs.
+- Keyboard shortcuts: `[Q]` quit, `[R]` refresh now, `[P]` pause/resume auto-refresh. Safe against window resizing.
+
 
 ## Architecture
 

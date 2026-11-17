@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vectis — Autonomous Agent Orchestrator</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --card-bg: #121216;
+      --card-hover: #18181f;
+      --border: #27272a;
+      --border-subtle: #1e1e24;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --text-dim: #71717a;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-subtle: rgba(99, 102, 241, 0.12);
+      --success: #10b981;
+      --success-subtle: rgba(16, 185, 129, 0.12);
+      --warning: #f59e0b;
+      --warning-subtle: rgba(245, 158, 11, 0.12);
+      --danger: #f43f5e;
+      --danger-subtle: rgba(244, 63, 94, 0.12);
+      --info: #3b82f6;
+      --info-subtle: rgba(59, 130, 246, 0.12);
+      --purple: #8b5cf6;
+      --purple-subtle: rgba(139, 92, 246, 0.12);
+      --radius: 8px;
+      --radius-sm: 6px;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+    /* Header */
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand svg {
+      width: 28px;
+      height: 28px;
+      color: var(--primary);
+    }
+    .brand-title {
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .brand-tag {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      background: var(--primary-subtle);
+      color: var(--primary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .live-status {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.03);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 2s infinite;
+    }
+    .pulse-dot.paused {
+      background: var(--warning);
+      box-shadow: none;
+      animation: none;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.9); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+    .btn-secondary {
+      background: #27272a;
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: #3f3f46;
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover {
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+    }
+    .btn-sm {
+      padding: 4px 8px;
+      font-size: 0.75rem;
+    }
+    .btn-danger {
+      background: var(--danger-subtle);
+      color: var(--danger);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+    .btn-danger:hover {
+      background: var(--danger);
+      color: #fff;
+    }
+    .btn-success {
+      background: var(--success-subtle);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .btn-success:hover {
+      background: var(--success);
+      color: #fff;
+    }
+
+    /* Top Stats Bar */
+    .metrics-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      padding: 1.25rem 1.5rem 0.5rem 1.5rem;
+    }
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .metric-header {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .metric-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #fff;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .progress-bar-bg {
+      background: #27272a;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+      width: 100%;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    /* Navigation Tabs */
+    .tabs-nav {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .tab-btn {
+      background: transparent;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      font-weight: 500;
+      font-size: 0.85rem;
+      border: 1px solid transparent;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
+    }
+    .tab-btn.active {
+      color: #fff;
+      background: var(--card-bg);
+      border-color: var(--border);
+    }
+    .tab-badge {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      padding: 1px 5px;
+      border-radius: 10px;
+      background: #27272a;
+      color: var(--text-muted);
+      margin-left: 0.3rem;
+    }
+
+    /* Content Area */
+    main {
+      padding: 1.25rem 1.5rem;
+      flex: 1;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Status Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-OPEN { background: var(--info-subtle); color: var(--info); border: 1px solid rgba(59, 130, 246, 0.25); }
+    .badge-IN_PROGRESS { background: var(--warning-subtle); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.25); }
+    .badge-REVIEW { background: var(--purple-subtle); color: var(--purple); border: 1px solid rgba(139, 92, 246, 0.25); }
+    .badge-DONE { background: var(--success-subtle); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.25); }
+    .badge-FAILED { background: var(--danger-subtle); color: var(--danger); border: 1px solid rgba(244, 63, 94, 0.25); }
+    .badge-PAUSED_BUDGET { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-ACTIVE { background: var(--success-subtle); color: var(--success); }
+    .badge-DISABLED { background: #27272a; color: var(--text-dim); }
+
+    /* Org Chart Grid */
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .agent-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: border-color 0.15s ease;
+    }
+    .agent-card:hover {
+      border-color: #3f3f46;
+    }
+    .agent-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .agent-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #fff;
+    }
+    .agent-role {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .agent-model {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.04);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+      width: fit-content;
+    }
+    .agent-spend-info {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+    }
+    .agent-actions {
+      display: flex;
+      gap: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Ticket Hierarchy & Tree */
+    .tree-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    .tree-node {
+      margin-left: 1.25rem;
+      position: relative;
+      padding-left: 0.75rem;
+      border-left: 2px solid #27272a;
+      margin-top: 0.6rem;
+    }
+    .tree-node.root-node {
+      margin-left: 0;
+      padding-left: 0;
+      border-left: none;
+      margin-top: 1rem;
+    }
+    .tree-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .tree-card:hover {
+      background: rgba(255,255,255,0.04);
+    }
+    .tree-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+    .ticket-id {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+    .ticket-title {
+      font-weight: 500;
+      font-size: 0.85rem;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ticket-assignee {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.04);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .tree-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    /* Data Tables */
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.8rem;
+    }
+    th {
+      background: rgba(255,255,255,0.02);
+      padding: 0.75rem 1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text);
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover td {
+      background: rgba(255,255,255,0.02);
+    }
+    .mono {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Workspace Explorer */
+    .workspace-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      min-height: 480px;
+      overflow: hidden;
+    }
+    .ws-sidebar {
+      border-right: 1px solid var(--border);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      background: #0d0d10;
+    }
+    .ws-file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      overflow-y: auto;
+      max-height: 400px;
+    }
+    .ws-file-item {
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      transition: background 0.15s ease;
+    }
+    .ws-file-item:hover {
+      background: #1e1e24;
+      color: #fff;
+    }
+    .ws-file-item.active {
+      background: var(--primary-subtle);
+      color: var(--primary);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+    .ws-viewer {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      background: #09090b;
+      overflow-y: auto;
+    }
+    .ws-viewer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+    .ws-code-block {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #e4e4e7;
+    }
+
+    /* Modal / Drawer */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(2px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.active {
+      display: flex;
+    }
+    .modal-dialog {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 480px;
+      padding: 1.5rem;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .form-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .form-input, .form-select, .form-textarea {
+      background: #09090b;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 8px 10px;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .form-textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+    .toast {
+      background: #18181f;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 14px;
+      font-size: 0.8rem;
+      color: #fff;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+      animation: slideIn 0.2s ease-out;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error { border-left: 3px solid var(--danger); }
+    @keyframes slideIn {
+      from { transform: translateY(10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Empty states */
+    .empty-state {
+      padding: 3rem 1rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+      <div>
+        <span class="brand-title">Vectis</span>
+        <span class="brand-tag">v0.4.0</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="live-status">
+        <span id="pulse-dot" class="pulse-dot"></span>
+        <span id="live-text">Live (3s)</span>
+      </div>
+      <button id="toggle-refresh-btn" class="btn-outline btn-sm" onclick="toggleAutoRefresh()">Pause</button>
+      <button class="btn-outline btn-sm" onclick="refreshAll(true)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        Sync
+      </button>
+      <button class="btn-secondary btn-sm" onclick="openBudgetModal()">Top-Up Budget</button>
+      <button class="btn-primary btn-sm" onclick="openSeedModal()">+ Seed Task</button>
+    </div>
+  </header>
+
+  <!-- Metrics Bar -->
+  <section class="metrics-bar">
+    <div class="metric-card">
+      <div class="metric-header">
+        <span>Tickets Processed</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <div class="metric-value" id="m-tickets-total">0</div>
+      <div class="metric-sub" id="m-tickets-sub">0 Open · 0 Done · 0 Failed</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span>Budget & Economics</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <div class="metric-value" id="m-spend-total">$0.0000</div>
+      <div class="metric-sub">
+        <span id="m-budget-sub">of $0.00 Cap (0%)</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div id="m-budget-bar" class="progress-bar-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span>Agents & Org</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="metric-value" id="m-agents-count">0</div>
+      <div class="metric-sub" id="m-agents-sub">All agents active</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <span>Engine Runtime</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      </div>
+      <div class="metric-value" id="m-workers-count">4 Workers</div>
+      <div class="metric-sub" id="m-engine-sub">SQLite WAL · Poll: 30s</div>
+    </div>
+  </section>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('overview')">
+      Overview & Hierarchy
+    </button>
+    <button class="tab-btn" onclick="switchTab('tickets')">
+      All Tickets <span id="tab-tickets-count" class="tab-badge">0</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('logs')">
+      Execution Logs <span id="tab-logs-count" class="tab-badge">0</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('workspaces')">
+      Workspaces & Files
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main>
+    <!-- TAB 1: Overview & Hierarchy -->
+    <div id="tab-overview" class="tab-content active">
+      <div class="section-title">
+        <span>Agent Organizational Hierarchy</span>
+        <span class="agent-role">Decentralized Autonomous Teams</span>
+      </div>
+      <div class="agents-grid" id="agents-grid">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="section-title">
+        <span>Ticket Lineage & Delegation Graph</span>
+        <span class="agent-role">Root & Sub-Tasks</span>
+      </div>
+      <div class="tree-container" id="tree-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- TAB 2: Tickets List -->
+    <div id="tab-tickets" class="tab-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <input type="text" id="tickets-search" class="form-input" style="width:240px;" placeholder="Search tickets..." oninput="renderTicketsTable()">
+          <select id="tickets-filter-status" class="form-select" onchange="renderTicketsTable()">
+            <option value="ALL">All Statuses</option>
+            <option value="OPEN">OPEN</option>
+            <option value="IN_PROGRESS">IN_PROGRESS</option>
+            <option value="REVIEW">REVIEW</option>
+            <option value="DONE">DONE</option>
+            <option value="FAILED">FAILED</option>
+            <option value="PAUSED_BUDGET">PAUSED_BUDGET</option>
+          </select>
+        </div>
+        <button class="btn-primary btn-sm" onclick="openSeedModal()">+ New Ticket</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60px;">ID</th>
+              <th>Title</th>
+              <th>Assigned To</th>
+              <th>Status</th>
+              <th>Parent</th>
+              <th>Retries</th>
+              <th>Created</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tickets-table-body">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 3: Execution Logs -->
+    <div id="tab-logs" class="tab-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <span class="section-title" style="margin-bottom:0;">LLM Transport & Tool Audit Trail</span>
+        <button class="btn-outline btn-sm" onclick="fetchLogs()">Refresh Logs</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:50px;">#</th>
+              <th>Ticket</th>
+              <th>Agent</th>
+              <th style="text-align:right;">Prompt</th>
+              <th style="text-align:right;">Comp</th>
+              <th style="text-align:right;">Total</th>
+              <th style="text-align:right;">Cost ($)</th>
+              <th style="text-align:right;">Latency</th>
+              <th>Tools Executed</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="logs-table-body">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 4: Workspaces & Files -->
+    <div id="tab-workspaces" class="tab-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <span class="form-label" style="margin:0;">Select Ticket:</span>
+          <select id="workspace-ticket-select" class="form-select" onchange="loadWorkspaceSelected()">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <span id="workspace-path-label" class="mono" style="font-size:0.75rem; color:var(--text-dim);"></span>
+      </div>
+
+      <div class="workspace-layout">
+        <div class="ws-sidebar">
+          <div class="form-label">Workspace Files</div>
+          <div class="ws-file-list" id="ws-file-list">
+            <div class="empty-state" style="padding:1rem;">Select a ticket to inspect files</div>
+          </div>
+        </div>
+        <div class="ws-viewer">
+          <div class="ws-viewer-header">
+            <span id="ws-current-file">No file selected</span>
+            <span id="ws-current-size" class="text-dim"></span>
+          </div>
+          <pre class="ws-code-block" id="ws-code-content">Select a file from the left to view contents.</pre>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: Seed Task -->
+  <div id="modal-seed" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">Seed New Task</div>
+        <button class="btn-outline btn-sm" onclick="closeModals()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Task Title</label>
+        <input type="text" id="seed-title" class="form-input" placeholder="e.g. Implement user authentication module">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assigned Agent</label>
+        <select id="seed-assign" class="form-select">
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Task Description</label>
+        <textarea id="seed-desc" class="form-textarea" placeholder="Detailed objective, specifications, acceptance criteria..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline" onclick="closeModals()">Cancel</button>
+        <button class="btn-primary" onclick="submitSeedTask()">Create Ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Top-Up Budget -->
+  <div id="modal-budget" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">Top-Up Agent Budget</div>
+        <button class="btn-outline btn-sm" onclick="closeModals()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agent</label>
+        <select id="budget-agent" class="form-select">
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Amount (USD)</label>
+        <input type="number" id="budget-amount" class="form-input" value="10.00" step="1.00" min="0.50">
+        <div style="display:flex; gap:0.5rem; margin-top:0.4rem;">
+          <button class="btn-outline btn-sm" onclick="document.getElementById('budget-amount').value='5.00'">+$5</button>
+          <button class="btn-outline btn-sm" onclick="document.getElementById('budget-amount').value='10.00'">+$10</button>
+          <button class="btn-outline btn-sm" onclick="document.getElementById('budget-amount').value='25.00'">+$25</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline" onclick="closeModals()">Cancel</button>
+        <button class="btn-primary" onclick="submitTopup()">Apply Funds</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- JavaScript -->
+  <script>
+    let state = {
+      status: {},
+      agents: [],
+      tickets: [],
+      tree: [],
+      logs: [],
+      activeTab: 'overview',
+      autoRefresh: true,
+      refreshTimer: null,
+      selectedTicketForWs: null
+    };
+
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.remove();
+      }, 3500);
+    }
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const target = document.getElementById(`tab-${tabId}`);
+      if (target) target.classList.add('active');
+
+      if (tabId === 'workspaces' && state.tickets.length > 0 && !state.selectedTicketForWs) {
+        populateWorkspaceDropdown();
+      }
+    }
+
+    function toggleAutoRefresh() {
+      state.autoRefresh = !state.autoRefresh;
+      const dot = document.getElementById('pulse-dot');
+      const txt = document.getElementById('live-text');
+      const btn = document.getElementById('toggle-refresh-btn');
+
+      if (state.autoRefresh) {
+        dot.classList.remove('paused');
+        txt.textContent = 'Live (3s)';
+        btn.textContent = 'Pause';
+        startPolling();
+      } else {
+        dot.classList.add('paused');
+        txt.textContent = 'Paused';
+        btn.textContent = 'Resume';
+        clearInterval(state.refreshTimer);
+      }
+    }
+
+    async function refreshAll(showNotice = false) {
+      try {
+        await Promise.all([
+          fetchStatus(),
+          fetchAgents(),
+          fetchTickets(),
+          fetchTree(),
+          fetchLogs()
+        ]);
+        if (showNotice) showToast('System synced with SQLite state', 'success');
+      } catch (err) {
+        console.error('Failed to sync:', err);
+      }
+    }
+
+    async function fetchStatus() {
+      const res = await fetch('/api/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      state.status = data;
+
+      document.getElementById('m-tickets-total').textContent = data.total_tickets || 0;
+      const sc = data.status_counts || {};
+      document.getElementById('m-tickets-sub').textContent = 
+        `${sc.OPEN || 0} Open · ${sc.IN_PROGRESS || 0} Active · ${sc.DONE || 0} Done · ${sc.FAILED || 0} Failed`;
+
+      const spend = data.total_spend || 0;
+      const budget = data.total_budget || 0;
+      const pct = budget > 0 ? Math.min(100, (spend / budget) * 100).toFixed(1) : 0;
+      document.getElementById('m-spend-total').textContent = `$${spend.toFixed(4)}`;
+      document.getElementById('m-budget-sub').textContent = `of $${budget.toFixed(2)} Cap (${pct}%)`;
+      document.getElementById('m-budget-bar').style.width = `${pct}%`;
+
+      document.getElementById('m-agents-count').textContent = data.total_agents || 0;
+      document.getElementById('m-agents-sub').textContent = `${data.active_agents || 0} active in pool`;
+
+      if (data.config) {
+        document.getElementById('m-workers-count').textContent = `${data.config.max_workers} Workers`;
+        document.getElementById('m-engine-sub').textContent = `SQLite WAL · Poll: ${data.config.poll_interval}s`;
+      }
+    }
+
+    async function fetchAgents() {
+      const res = await fetch('/api/agents');
+      if (!res.ok) return;
+      state.agents = await res.json();
+      renderAgents();
+      populateAgentDropdowns();
+    }
+
+    async function fetchTickets() {
+      const res = await fetch('/api/tickets');
+      if (!res.ok) return;
+      state.tickets = await res.json();
+      document.getElementById('tab-tickets-count').textContent = state.tickets.length;
+      renderTicketsTable();
+      populateWorkspaceDropdown();
+    }
+
+    async function fetchTree() {
+      const res = await fetch('/api/tree');
+      if (!res.ok) return;
+      state.tree = await res.json();
+      renderTree();
+    }
+
+    async function fetchLogs() {
+      const res = await fetch('/api/logs?limit=50');
+      if (!res.ok) return;
+      state.logs = await res.json();
+      document.getElementById('tab-logs-count').textContent = state.logs.length;
+      renderLogs();
+    }
+
+    function renderAgents() {
+      const container = document.getElementById('agents-grid');
+      container.innerHTML = '';
+
+      state.agents.forEach(agent => {
+        const pct = agent.budget_limit > 0 
+          ? Math.min(100, (agent.current_spend / agent.budget_limit) * 100).toFixed(1) 
+          : 0;
+        
+        const card = document.createElement('div');
+        card.className = 'agent-card';
+        card.innerHTML = `
+          <div class="agent-top">
+            <div>
+              <div class="agent-title">${escapeHtml(agent.name)}</div>
+              <div class="agent-role">${escapeHtml(agent.role)} · ID: ${escapeHtml(agent.id)}</div>
+            </div>
+            <span class="badge badge-${escapeHtml(agent.status)}">${escapeHtml(agent.status)}</span>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="agent-model">${escapeHtml(agent.model_name)}</span>
+            <span style="font-size:0.75rem; color:var(--text-dim);">${agent.manager_id ? 'Reports to: ' + escapeHtml(agent.manager_id) : 'Top-Level'}</span>
+          </div>
+
+          <div>
+            <div class="agent-spend-info">
+              <span>Spend: $${agent.current_spend.toFixed(4)}</span>
+              <span>Cap: $${agent.budget_limit.toFixed(2)} (${pct}%)</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" style="width: ${pct}%;"></div>
+            </div>
+          </div>
+
+          <div class="agent-actions">
+            <button class="btn-outline btn-sm" onclick="openBudgetModalFor('${escapeHtml(agent.id)}')">+ Top-Up</button>
+            <button class="btn-outline btn-sm" onclick="toggleAgentStatus('${escapeHtml(agent.id)}', '${agent.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'}')">
+              ${agent.status === 'ACTIVE' ? 'Pause' : 'Activate'}
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderTree() {
+      const container = document.getElementById('tree-container');
+      if (!state.tree || state.tree.length === 0) {
+        container.innerHTML = '<div class="empty-state">No tickets in system. Click "+ Seed Task" to begin.</div>';
+        return;
+      }
+
+      function buildNodeHtml(node, isRoot = false) {
+        let childHtml = '';
+        if (node.children && node.children.length > 0) {
+          childHtml = node.children.map(c => buildNodeHtml(c, false)).join('');
+        }
+
+        const retryBadge = node.retry_count > 0 
+          ? `<span class="badge badge-FAILED">retries: ${node.retry_count}/${node.max_retries}</span>` 
+          : '';
+
+        let actions = '';
+        if (node.status === 'FAILED') {
+          actions += `<button class="btn-outline btn-sm" onclick="retryTicket(${node.id})">Retry</button>`;
+        }
+        if (node.status === 'OPEN' || node.status === 'IN_PROGRESS') {
+          actions += `<button class="btn-danger btn-sm" onclick="cancelTicket(${node.id})">Cancel</button>`;
+        }
+        actions += `<button class="btn-outline btn-sm" onclick="inspectTicketWorkspace(${node.id})">Workspace</button>`;
+
+        return `
+          <div class="tree-node ${isRoot ? 'root-node' : ''}">
+            <div class="tree-card">
+              <div class="tree-left">
+                <span class="ticket-id">#${node.id}</span>
+                <span class="badge badge-${escapeHtml(node.status)}">${escapeHtml(node.status)}</span>
+                <span class="ticket-title">${escapeHtml(node.title)}</span>
+                <span class="ticket-assignee">@${escapeHtml(node.assigned_to)}</span>
+                ${retryBadge}
+              </div>
+              <div class="tree-right">
+                ${actions}
+              </div>
+            </div>
+            ${childHtml}
+          </div>
+        `;
+      }
+
+      container.innerHTML = state.tree.map(root => buildNodeHtml(root, true)).join('');
+    }
+
+    function renderTicketsTable() {
+      const tbody = document.getElementById('tickets-table-body');
+      const search = (document.getElementById('tickets-search').value || '').toLowerCase();
+      const statusFilter = document.getElementById('tickets-filter-status').value;
+
+      const filtered = state.tickets.filter(t => {
+        if (statusFilter !== 'ALL' && t.status !== statusFilter) return false;
+        if (search) {
+          const matchTitle = (t.title || '').toLowerCase().includes(search);
+          const matchAssignee = (t.assigned_to || '').toLowerCase().includes(search);
+          const matchId = String(t.id).includes(search);
+          return matchTitle || matchAssignee || matchId;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching tickets found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(t => {
+        const parent = t.parent_ticket_id ? `#${t.parent_ticket_id}` : '—';
+        const retries = `${t.retry_count || 0}/${t.max_retries || 3}`;
+        const created = (t.created_at || '').slice(0, 19).replace('T', ' ');
+
+        let actionBtns = '';
+        if (t.status === 'FAILED') {
+          actionBtns += `<button class="btn-outline btn-sm" onclick="retryTicket(${t.id})">Retry</button> `;
+        }
+        if (t.status === 'OPEN' || t.status === 'IN_PROGRESS') {
+          actionBtns += `<button class="btn-danger btn-sm" onclick="cancelTicket(${t.id})">Cancel</button> `;
+        }
+        actionBtns += `<button class="btn-outline btn-sm" onclick="inspectTicketWorkspace(${t.id})">Files</button>`;
+
+        return `
+          <tr>
+            <td class="mono">#${t.id}</td>
+            <td style="font-weight:500;">
+              <div>${escapeHtml(t.title)}</div>
+              ${t.error_message ? `<div style="color:var(--danger); font-size:0.7rem;">Error: ${escapeHtml(t.error_message)}</div>` : ''}
+            </td>
+            <td><span class="ticket-assignee">@${escapeHtml(t.assigned_to)}</span></td>
+            <td><span class="badge badge-${escapeHtml(t.status)}">${escapeHtml(t.status)}</span></td>
+            <td class="mono">${parent}</td>
+            <td class="mono">${retries}</td>
+            <td class="mono" style="color:var(--text-dim);">${created}</td>
+            <td style="text-align:right;">${actionBtns}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderLogs() {
+      const tbody = document.getElementById('logs-table-body');
+      if (state.logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No execution logs yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = state.logs.map(log => {
+        const ms = log.execution_time_ms ? `${log.execution_time_ms}ms` : '—';
+        const cost = typeof log.estimated_cost === 'number' ? `$${log.estimated_cost.toFixed(4)}` : '$0.0000';
+        const time = (log.executed_at || '').slice(0, 19).replace('T', ' ');
+
+        let toolsSummary = '—';
+        if (log.tool_calls && Array.isArray(log.tool_calls) && log.tool_calls.length > 0) {
+          toolsSummary = log.tool_calls.map(tc => {
+            const statusClass = tc.success ? 'color:var(--success)' : 'color:var(--danger)';
+            return `<span style="${statusClass}; font-family:var(--font-mono); font-size:0.7rem;">${escapeHtml(tc.tool || 'tool')}</span>`;
+          }).join(', ');
+        }
+
+        return `
+          <tr>
+            <td class="mono" style="color:var(--text-dim);">${log.id}</td>
+            <td class="mono">#${log.ticket_id}</td>
+            <td><span class="ticket-assignee">@${escapeHtml(log.agent_id)}</span></td>
+            <td class="mono" style="text-align:right;">${log.prompt_tokens || 0}</td>
+            <td class="mono" style="text-align:right;">${log.completion_tokens || 0}</td>
+            <td class="mono" style="text-align:right; font-weight:600;">${log.total_tokens || 0}</td>
+            <td class="mono" style="text-align:right; color:var(--text);">${cost}</td>
+            <td class="mono" style="text-align:right; color:var(--text-dim);">${ms}</td>
+            <td>${toolsSummary}</td>
+            <td class="mono" style="color:var(--text-dim); font-size:0.7rem;">${time}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function populateAgentDropdowns() {
+      const seedSelect = document.getElementById('seed-assign');
+      const budgetSelect = document.getElementById('budget-agent');
+      seedSelect.innerHTML = '';
+      budgetSelect.innerHTML = '';
+
+      state.agents.forEach(a => {
+        const opt1 = document.createElement('option');
+        opt1.value = a.id;
+        opt1.textContent = `${a.name} (${a.role}) [${a.status}]`;
+        seedSelect.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = a.id;
+        opt2.textContent = `${a.name} (${a.id}) - Limit: $${a.budget_limit.toFixed(2)}`;
+        budgetSelect.appendChild(opt2);
+      });
+    }
+
+    function populateWorkspaceDropdown() {
+      const select = document.getElementById('workspace-ticket-select');
+      if (!select) return;
+      const currentVal = select.value;
+      select.innerHTML = '';
+
+      state.tickets.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `#${t.id}: ${t.title.slice(0, 40)} (${t.status})`;
+        select.appendChild(opt);
+      });
+
+      if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+        select.value = currentVal;
+      } else if (state.tickets.length > 0) {
+        select.value = state.tickets[0].id;
+        loadWorkspaceSelected();
+      }
+    }
+
+    async function loadWorkspaceSelected() {
+      const select = document.getElementById('workspace-ticket-select');
+      const ticketId = select.value;
+      if (!ticketId) return;
+      state.selectedTicketForWs = ticketId;
+
+      const pathLabel = document.getElementById('workspace-path-label');
+      const fileList = document.getElementById('ws-file-list');
+      const codeContent = document.getElementById('ws-code-content');
+      const currentFile = document.getElementById('ws-current-file');
+      const currentSize = document.getElementById('ws-current-size');
+
+      fileList.innerHTML = '<div class="empty-state">Loading workspace...</div>';
+
+      try {
+        const res = await fetch(`/api/workspaces/${ticketId}`);
+        if (!res.ok) throw new Error('Failed to load workspace');
+        const data = await res.json();
+
+        pathLabel.textContent = data.workspace_path || '';
+        const entries = data.entries || [];
+
+        if (entries.length === 0) {
+          fileList.innerHTML = '<div class="empty-state">Workspace is empty. No files generated yet.</div>';
+          codeContent.textContent = 'No files to preview.';
+          currentFile.textContent = 'Empty';
+          currentSize.textContent = '';
+          return;
+        }
+
+        fileList.innerHTML = '';
+        entries.forEach((e, idx) => {
+          const item = document.createElement('div');
+          item.className = 'ws-file-item';
+          const icon = e.type === 'directory' ? '📁' : '📄';
+          item.innerHTML = `<span>${icon}</span> <span>${escapeHtml(e.path)}</span>`;
+          if (e.type === 'file') {
+            item.onclick = () => loadFileContent(ticketId, e.path, item);
+          }
+          fileList.appendChild(item);
+
+          if (idx === 0 && e.type === 'file') {
+            loadFileContent(ticketId, e.path, item);
+          }
+        });
+      } catch (err) {
+        fileList.innerHTML = `<div class="empty-state" style="color:var(--danger)">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function loadFileContent(ticketId, filePath, element) {
+      document.querySelectorAll('.ws-file-item').forEach(el => el.classList.remove('active'));
+      if (element) element.classList.add('active');
+
+      const codeContent = document.getElementById('ws-code-content');
+      const currentFile = document.getElementById('ws-current-file');
+      const currentSize = document.getElementById('ws-current-size');
+
+      currentFile.textContent = filePath;
+      codeContent.textContent = 'Loading...';
+
+      try {
+        const res = await fetch(`/api/workspaces/${ticketId}/file?path=${encodeURIComponent(filePath)}`);
+        if (!res.ok) throw new Error('Failed to read file');
+        const data = await res.json();
+
+        codeContent.textContent = data.content || '';
+        currentSize.textContent = `${data.size || 0} bytes ${data.truncated ? '(truncated)' : ''}`;
+      } catch (err) {
+        codeContent.textContent = `Error reading file: ${err.message}`;
+      }
+    }
+
+    function inspectTicketWorkspace(ticketId) {
+      switchTab('workspaces');
+      const select = document.getElementById('workspace-ticket-select');
+      if (select) {
+        select.value = String(ticketId);
+        loadWorkspaceSelected();
+      }
+    }
+
+    /* Modals & Actions */
+    function openSeedModal() {
+      document.getElementById('modal-seed').classList.add('active');
+      document.getElementById('seed-title').focus();
+    }
+    function openBudgetModal() {
+      document.getElementById('modal-budget').classList.add('active');
+    }
+    function openBudgetModalFor(agentId) {
+      document.getElementById('budget-agent').value = agentId;
+      document.getElementById('modal-budget').classList.add('active');
+    }
+    function closeModals() {
+      document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('active'));
+    }
+
+    async function submitSeedTask() {
+      const title = document.getElementById('seed-title').value.trim();
+      const assign = document.getElementById('seed-assign').value;
+      const desc = document.getElementById('seed-desc').value.trim();
+
+      if (!title) {
+        showToast('Please provide a ticket title', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/tickets/seed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, assigned_to: assign, description: desc })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Created Ticket #${data.ticket_id}`, 'success');
+          closeModals();
+          document.getElementById('seed-title').value = '';
+          document.getElementById('seed-desc').value = '';
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to seed task', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function submitTopup() {
+      const agentId = document.getElementById('budget-agent').value;
+      const amount = parseFloat(document.getElementById('budget-amount').value);
+
+      if (isNaN(amount) || amount <= 0) {
+        showToast('Please enter a valid amount', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/budget/topup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent_id: agentId, amount })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Topped up ${agentId} by $${amount.toFixed(2)}. New limit: $${data.new_limit.toFixed(2)}`, 'success');
+          closeModals();
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to top-up', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function retryTicket(ticketId) {
+      try {
+        const res = await fetch('/api/tickets/retry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_id: ticketId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Ticket #${ticketId} reset to OPEN`, 'success');
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to retry ticket', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function cancelTicket(ticketId) {
+      if (!confirm(`Are you sure you want to cancel Ticket #${ticketId}?`)) return;
+      try {
+        const res = await fetch('/api/tickets/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_id: ticketId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Ticket #${ticketId} cancelled`, 'success');
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to cancel ticket', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function toggleAgentStatus(agentId, nextStatus) {
+      try {
+        const res = await fetch('/api/agents/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent_id: agentId, status: nextStatus })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Agent ${agentId} set to ${nextStatus}`, 'success');
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to update agent', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function startPolling() {
+      clearInterval(state.refreshTimer);
+      state.refreshTimer = setInterval(() => {
+        if (state.autoRefresh) {
+          refreshAll();
+        }
+      }, 3000);
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshAll();
+      startPolling();
+    });
+  </script>
+</body>
+</html>

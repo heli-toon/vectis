@@ -214,3 +214,28 @@ def test_cli_logs_with_tool_calls(tmp_path, monkeypatch, capsys):
     out = run_cli_args(["logs", str(ticket_id)], monkeypatch, capsys)
     assert "tools: file_write:ok, execute_command:ok" in out.out
 
+
+def test_cli_ui_command(tmp_path, monkeypatch, capsys):
+    """Verify 'ui' command parses host, port, and calls start_server."""
+    db_file = str(tmp_path / "cli_ui_test.db")
+    monkeypatch.setattr(config, "DB_PATH", db_file)
+    run_cli_args(["init"], monkeypatch, capsys)
+
+    with patch("web_ui.start_server") as mock_start:
+        run_cli_args(["ui", "--host", "0.0.0.0", "--port", "9090"], monkeypatch, capsys)
+        mock_start.assert_called_once_with(
+            host="0.0.0.0", port=9090, db_path=db_file, blocking=True
+        )
+
+
+def test_cli_monitor_command(tmp_path, monkeypatch, capsys):
+    """Verify 'monitor' command parses interval and calls start_monitor."""
+    db_file = str(tmp_path / "cli_monitor_test.db")
+    monkeypatch.setattr(config, "DB_PATH", db_file)
+    run_cli_args(["init"], monkeypatch, capsys)
+
+    with patch("monitor.start_monitor") as mock_monitor:
+        run_cli_args(["monitor", "--interval", "1.5"], monkeypatch, capsys)
+        mock_monitor.assert_called_once_with(interval_sec=1.5, db_path=db_file)
+
+

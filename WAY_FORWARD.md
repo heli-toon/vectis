@@ -207,23 +207,26 @@ Implement pure Python standard-library tools:
 
 ---
 
-### Phase 4: Observability & Lightweight Web Dashboard (Weeks 7 – 8)
+### Phase 4: Observability & Lightweight Web Dashboard (Weeks 7 – 8) ✅
 **Goal:** Provide full visibility into agent organizational hierarchies, tickets, and costs without external bloated dependencies.
 
-#### 4.1 Zero-Dependency Embedded Web UI
-- Built using Python's standard `http.server` (zero FastAPI, Flask, or Node.js dependencies).
-- Single-page interface (Vanilla HTML5 / CSS3 / ES6):
-  - **Live Org Chart:** Visual representation of agents, active models, and remaining budgets.
-  - **Ticket Dependency Graph:** Interactive tree/DAG showing parent and child tickets with status badges.
-  - **Real-Time Execution Logs:** Polling `/api/logs` to display prompt token costs, latency, and agent responses.
-  - **Action Controls:** Buttons to seed new tasks, pause/resume agents, and top-up budgets.
-- Started optionally via:
+#### 4.1 Zero-Dependency Embedded Web UI ✅
+- Built using Python's standard `http.server.ThreadingHTTPServer` (zero FastAPI, Flask, or Node.js dependencies).
+- Single-page interface (Vanilla HTML5 / CSS3 / ES6, dark/slate developer theme):
+  - **Live Org Chart:** Visual representation of agents, active models, spend vs budget progress bar, status badges, and pause/resume toggles.
+  - **Ticket Dependency Graph:** Interactive tree/DAG showing parent and child tickets with status badges, retry counters, and inline actions.
+  - **Real-Time Execution Logs:** Polling `/api/logs` to display prompt/completion token costs, latency (ms), and expandable tool call audit results.
+  - **Workspace File Explorer:** Built-in viewer to browse and inspect deliverables produced inside ticket workspaces.
+  - **Action Controls:** Modals and inline buttons to seed new tasks, pause/resume agents, and top-up budgets.
+- Started via:
   ```bash
-  python main.py ui --port 8080
+  python main.py ui --host 127.0.0.1 --port 8080 [--open]
   ```
 
-#### 4.2 Terminal User Interface (TUI)
-- Optional `python main.py monitor` command using Python's standard `curses` library for a live terminal dashboard over SSH.
+#### 4.2 Terminal User Interface (TUI) ✅
+- Implemented `python main.py monitor` command using Python's standard `curses` library for a live terminal dashboard over SSH.
+- Real-time ASCII/Unicode budget meters, ticket counters by status, active tickets, and recent execution logs.
+- Safe out-of-bounds clipping, color pair management, and interactive controls (`[Q]` to quit, `[R]` to refresh, `[P]` to pause).
 
 ---
 
@@ -322,7 +325,29 @@ stateDiagram-v2
 - [x] ✅ **Task 15: Concurrency Test Suite & Memory Validation**
   - Create `tests/test_concurrency.py` covering concurrent multi-agent execution, atomic claim conflict handling, agent affinity, CLI `--workers` flag, and peak RAM consumption (< 65 MB target, 58 passing tests).
 
+### Sprint 4: Phase 4 — Observability & Lightweight Web Dashboard
+- [x] ✅ **Task 16: Zero-Dependency Embedded HTTP Server & REST API**
+  - Create `web_ui.py` leveraging Python's standard `http.server.ThreadingHTTPServer` and thread-safe SQLite connection handling.
+  - Implement full REST API suite: `GET /api/status`, `GET /api/agents`, `GET /api/tickets` (with status, parent, and assignee filters), `GET /api/tree` (hierarchical DAG), `GET /api/logs`, `GET /api/workspaces/<ticket_id>`, and `GET /api/workspaces/<ticket_id>/file`.
+  - Implement operator control mutation endpoints: `POST /api/tickets/seed`, `POST /api/tickets/retry`, `POST /api/tickets/cancel`, `POST /api/budget/topup`, and `POST /api/agents/toggle`.
+- [x] ✅ **Task 17: Embedded Single-Page Web Dashboard**
+  - Create `templates/dashboard.html` with pure Vanilla HTML5, CSS3, and ES6 JavaScript (zero external npm or CDN dependencies; fully functional airgapped).
+  - Design a high-craft dark/slate developer-operations interface meeting WCAG contrast and strict Impeccable Operate standards.
+  - Deliver live agent org chart with spend meters, interactive ticket dependency tree, real-time log stream with latency and token metrics, expandable tool audit details, and workspace deliverable file inspector.
+  - Include interactive modal dialogs for seeding tasks, topping up agent budgets, and live polling controls.
+- [x] ✅ **Task 18: Terminal User Interface (TUI) Monitor**
+  - Implement `monitor.py` utilizing Python's standard `curses` library for remote server & SSH terminal administration.
+  - Render ASCII/Unicode budget meters, ticket status counts, active tickets, and recent execution logs with terminal resize and out-of-bounds protection.
+  - Provide interactive keyboard controls (`[Q]` quit, `[R]` refresh, `[P]` pause).
+- [x] ✅ **Task 19: CLI Subcommand Integration**
+  - Add `python main.py ui [--host 127.0.0.1] [--port 8080] [--open]` to launch the embedded web dashboard.
+  - Add `python main.py monitor [--interval 2.0]` to run the live curses terminal dashboard.
+- [x] ✅ **Task 20: Observability Test Suite**
+  - Build `tests/test_web_ui.py` testing every REST API endpoint, HTML serving, query filtering, and error handling.
+  - Build `tests/test_monitor.py` verifying snapshot calculation, progress bar rendering, curses bounds protection, and key events.
+  - Extend `tests/test_cli.py` to validate CLI argument parsing for `ui` and `monitor` commands (77 passing tests).
+
 ---
 
 *Document Author: Vectis Core Architecture Team*  
-*Last Updated: 2026-11-16*
+*Last Updated: 2026-11-17*

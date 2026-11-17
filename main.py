@@ -357,6 +357,28 @@ def cmd_workspace(args):
     conn.close()
 
 
+def cmd_ui(args):
+    ensure_db()
+    import threading
+    from web_ui import start_server
+    host = getattr(args, "host", "127.0.0.1") or "127.0.0.1"
+    port = getattr(args, "port", 8080) or 8080
+    if getattr(args, "open", False):
+        try:
+            import webbrowser
+            threading.Timer(0.5, lambda: webbrowser.open(f"http://{host}:{port}/")).start()
+        except Exception:
+            pass
+    start_server(host=host, port=port, db_path=config.DB_PATH, blocking=True)
+
+
+def cmd_monitor(args):
+    ensure_db()
+    from monitor import start_monitor
+    interval = getattr(args, "interval", 2.0) or 2.0
+    start_monitor(interval_sec=interval, db_path=config.DB_PATH)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="vectis",
@@ -401,6 +423,14 @@ def main():
     ws_parser = subparsers.add_parser("workspace", help="Inspect workspace for a ticket")
     ws_parser.add_argument("ticket_id", type=int, help="Ticket ID")
 
+    ui_parser = subparsers.add_parser("ui", help="Start the embedded web dashboard")
+    ui_parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind to (default: 127.0.0.1)")
+    ui_parser.add_argument("--port", type=int, default=8080, help="Port to listen on (default: 8080)")
+    ui_parser.add_argument("--open", action="store_true", help="Automatically open dashboard in web browser")
+
+    monitor_parser = subparsers.add_parser("monitor", help="Start curses terminal dashboard monitor")
+    monitor_parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval in seconds (default: 2.0)")
+
     args = parser.parse_args()
 
     commands = {
@@ -414,6 +444,8 @@ def main():
         "logs": cmd_logs,
         "tree": cmd_tree,
         "workspace": cmd_workspace,
+        "ui": cmd_ui,
+        "monitor": cmd_monitor,
     }
 
     handler = commands.get(args.command)
