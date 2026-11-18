@@ -1,0 +1,35 @@
+[Unit]
+Description=Vectis Embedded Web Dashboard
+Documentation=https://github.com/muhaimin/vectis
+After=network.target vectis.service
+
+[Service]
+Type=simple
+# User=vectis
+# Group=vectis
+WorkingDirectory=/opt/vectis
+
+EnvironmentFile=-/etc/vectis/vectis.env
+EnvironmentFile=-/opt/vectis/.env
+
+Environment=PYTHONUNBUFFERED=1
+Environment=VECTIS_DB_PATH=/opt/vectis/data/vectis.db
+Environment=VECTIS_WORKSPACES_DIR=/opt/vectis/workspaces
+
+ExecStart=/opt/vectis/.venv/bin/vectis ui --host 0.0.0.0 --port 8080
+
+Restart=always
+RestartSec=5s
+
+TimeoutStopSec=15s
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65535
+
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/vectis
+
+[Install]
+WantedBy=multi-user.target

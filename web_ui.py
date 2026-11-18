@@ -19,6 +19,11 @@ from tools import directory_list, file_read, get_root_ticket_id, get_ticket_work
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 DASHBOARD_HTML_PATH = os.path.join(TEMPLATES_DIR, "dashboard.html")
+if not os.path.exists(DASHBOARD_HTML_PATH):
+    pkg_tmpl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectis", "templates", "dashboard.html")
+    if os.path.exists(pkg_tmpl):
+        DASHBOARD_HTML_PATH = pkg_tmpl
+        TEMPLATES_DIR = os.path.dirname(pkg_tmpl)
 
 
 def get_db(db_path: Optional[str] = None):

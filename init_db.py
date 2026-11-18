@@ -4,6 +4,10 @@ import os
 import config
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
+if not os.path.exists(SCHEMA_PATH):
+    pkg_schema = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectis", "schema.sql")
+    if os.path.exists(pkg_schema):
+        SCHEMA_PATH = pkg_schema
 
 DEFAULT_AGENTS = [
     {

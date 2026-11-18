@@ -1,0 +1,44 @@
+[Unit]
+Description=Vectis Autonomous Agent Heartbeat Daemon
+Documentation=https://github.com/muhaimin/vectis
+After=network.target
+
+[Service]
+Type=simple
+# User and Group can be customized according to host deployment (e.g., vectis or ubuntu)
+# User=vectis
+# Group=vectis
+WorkingDirectory=/opt/vectis
+
+# Load environment secrets and configuration
+EnvironmentFile=-/etc/vectis/vectis.env
+EnvironmentFile=-/opt/vectis/.env
+
+# Default environment overrides
+Environment=PYTHONUNBUFFERED=1
+Environment=VECTIS_DB_PATH=/opt/vectis/data/vectis.db
+Environment=VECTIS_WORKSPACES_DIR=/opt/vectis/workspaces
+Environment=VECTIS_POLL_INTERVAL=30
+Environment=VECTIS_MAX_WORKERS=4
+
+# Startup command (using installed vectis binary in virtualenv)
+ExecStart=/opt/vectis/.venv/bin/vectis run
+
+# Auto-restart on failure
+Restart=always
+RestartSec=5s
+
+# Logging & limits
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65535
+
+# Sandboxing & security hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/vectis
+
+[Install]
+WantedBy=multi-user.target

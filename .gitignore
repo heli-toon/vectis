@@ -3,4 +3,6 @@
 __pycache__
 .venv
 workspaces/
-
+build/
+dist/
+*.egg-info/

@@ -230,10 +230,10 @@ Implement pure Python standard-library tools:
 
 ---
 
-### Phase 5: Production Distribution & Packaging (Weeks 9 – 10)
+### Phase 5: Production Distribution & Packaging (Weeks 9 – 10) ✅
 **Goal:** Enable turnkey deployment across cloud and bare-metal environments.
 
-#### 5.1 Packaging & Installation
+#### 5.1 Packaging & Installation ✅
 - Transition to `pyproject.toml` (PEP 621):
   ```bash
   pip install -e .
@@ -241,14 +241,17 @@ Implement pure Python standard-library tools:
   vectis run
   vectis status
   ```
+- Package modules and assets with package discovery, `vectis` top-level module, and `pyproject.toml` tool configuration.
 
-#### 5.2 Turnkey Deployment Artifacts
-- **Systemd Unit File (`vectis.service`):** Auto-restart daemon on boot for Linux VPS deployments.
+#### 5.2 Turnkey Deployment Artifacts ✅
+- **Systemd Unit Files (`vectis.service`, `vectis-ui.service`):** Auto-restart daemon and embedded web dashboard for Linux VPS deployments.
 - **Minimal Alpine Dockerfile:**
   - Multi-stage build based on `python:3.12-alpine`.
   - Image size **< 65 MB**.
   - Built-in volume mounts for `vectis.db` and `workspaces/`.
-- **Docker Compose:** One-command launch with environment variables for API keys.
+  - Smart entrypoint (`docker-entrypoint.sh`) with auto-initialization.
+- **Docker Compose:** One-command turnkey stack running daemon and web UI concurrently with shared SQLite WAL volume.
+- **Deployment Documentation:** Comprehensive operations guide in [docs/DEPLOYMENT.md](file:///home/muhaimin/Documents/vectis/docs/DEPLOYMENT.md).
 
 ---
 
@@ -347,7 +350,29 @@ stateDiagram-v2
   - Build `tests/test_monitor.py` verifying snapshot calculation, progress bar rendering, curses bounds protection, and key events.
   - Extend `tests/test_cli.py` to validate CLI argument parsing for `ui` and `monitor` commands (77 passing tests).
 
+### Sprint 5: Phase 5 — Production Distribution & Packaging
+- [x] ✅ **Task 21: PEP 621 pyproject.toml & Packaging Migration**
+  - Create PEP 621 compliant `pyproject.toml` with console script entry point `vectis = "main:main"`, metadata, dependencies, and setuptools package data.
+  - Provide `vectis.py` and package module providing `__version__ = "0.2.0"` and export interface.
+  - Support direct CLI execution via `vectis <cmd>`, `python -m vectis <cmd>`, and `python main.py <cmd>`.
+- [x] ✅ **Task 22: Package Resource Resolution & Auto Directory Creation**
+  - Update `init_db.py` to resolve `schema.sql` from local or packaged locations.
+  - Update `web_ui.py` to resolve `templates/dashboard.html` from local or packaged locations.
+  - Update `config.py` `get_db_connection` to auto-create parent directories when `VECTIS_DB_PATH` is placed in nested folders (e.g. `/app/data/vectis.db`).
+- [x] ✅ **Task 23: Multi-Stage Alpine Dockerfile & Auto-Init Entrypoint**
+  - Construct multi-stage `Dockerfile` based on `python:3.12-alpine` keeping total image size under 65 MB.
+  - Create non-root user `vectis` (UID 1000) with volume mounts for `/app/data` and `/app/workspaces`.
+  - Implement `docker-entrypoint.sh` with automatic database initialization if `vectis.db` is missing on first boot.
+- [x] ✅ **Task 24: Turnkey Docker Compose Stack**
+  - Build `docker-compose.yml` orchestrating `daemon` (heartbeat engine) and `ui` (web dashboard) containers.
+  - Share persistent named volumes (`vectis-data`, `vectis-workspaces`) safely leveraging SQLite WAL concurrency.
+- [x] ✅ **Task 25: Systemd Daemon & Web UI Unit Files**
+  - Author `vectis.service` and `vectis-ui.service` for bare-metal / VPS deployments with auto-restart, logging, and security sandboxing (`ProtectSystem=full`, `ProtectHome=read-only`).
+- [x] ✅ **Task 26: Production Deployment Documentation & Packaging Test Suite**
+  - Author `docs/DEPLOYMENT.md` detailing step-by-step installation, VPS setup, Docker execution, and security hardening.
+  - Build `tests/test_packaging.py` validating package exports, pyproject config, resource resolution, Docker and Systemd files, and CLI execution (86 passing tests).
+
 ---
 
 *Document Author: Vectis Core Architecture Team*  
-*Last Updated: 2026-11-17*
+*Last Updated: 2026-11-18*

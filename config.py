@@ -48,7 +48,11 @@ _thread_local = threading.local()
 
 def get_db_connection(db_path=None, timeout=None):
     """Return a SQLite connection with foreign keys and WAL mode enabled and Row factory."""
-    conn = sqlite3.connect(db_path or DB_PATH, timeout=timeout or DB_TIMEOUT)
+    target_path = db_path or DB_PATH
+    db_dir = os.path.dirname(target_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    conn = sqlite3.connect(target_path, timeout=timeout or DB_TIMEOUT)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

@@ -5,47 +5,49 @@ Ultra-lightweight multi-agent orchestration system with hierarchical delegation,
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-pip3 install -r requirements.txt
+# 1. Install dependencies and CLI package
+pip3 install -e .
 
 # 2. Initialize the database (creates 4 default agents)
-python3 main.py init
+vectis init
 
 # 3. Set at least one LLM API key
 export GEMINI_API_KEY=your_key_here
 # (or OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY)
 
 # 4. Seed a task
-python3 main.py seed "Write a welcome email" --desc "Create a welcome email for new SaaS users" --assign ceo
+vectis seed "Write a welcome email" --desc "Create a welcome email for new SaaS users" --assign ceo
 
 # 5. Run the heartbeat daemon
-python3 main.py run
+vectis run
 ```
 
 ## CLI Commands
 
+Commands can be invoked directly via `vectis <cmd>` or via `python3 main.py <cmd>`:
+
 | Command | Description |
 |---------|-------------|
-| `python3 main.py init` | Initialize database with default agents |
-| `python3 main.py run` | Start the heartbeat daemon (polls every 30s) |
-| `python3 main.py run --once` | Run a single heartbeat tick and exit |
-| `python3 main.py run --interval 10` | Run with custom poll interval (seconds) |
-| `python3 main.py run --workers 4` | Run with custom worker thread pool size |
-| `python3 main.py seed "Title" --desc "..." --assign ceo` | Seed a root ticket |
-| `python3 main.py status` | Show system overview (agents, ticket counts, recent activity) |
-| `python3 main.py agents` | List all agents with details |
-| `python3 main.py tickets` | List all tickets with results |
-| `python3 main.py tickets retry <ticket_id>` | Reset ticket retry counter and status back to OPEN |
-| `python3 main.py tickets cancel <ticket_id>` | Cancel ticket and set status to FAILED |
-| `python3 main.py budget topup <agent_id> <amount>` | Increase agent dollar budget limit |
-| `python3 main.py logs <ticket_id>` | Pretty-print execution history, token costs, and latencies |
-| `python3 main.py workspace <ticket_id>` | Inspect file workspace deliverables for a ticket |
-| `python3 main.py tree` | Show ticket hierarchy tree |
-| `python3 main.py tree 1` | Show tree for a specific ticket |
-| `python3 main.py ui` | Start the zero-dependency embedded web dashboard (`http://127.0.0.1:8080`) |
-| `python3 main.py ui --port 9000 --open` | Run dashboard on custom port and open in default browser |
-| `python3 main.py monitor` | Start the live curses terminal dashboard over SSH |
-| `python3 main.py monitor --interval 1.0` | Run terminal monitor with 1-second refresh rate |
+| `vectis init` | Initialize database with default agents |
+| `vectis run` | Start the heartbeat daemon (polls every 30s) |
+| `vectis run --once` | Run a single heartbeat tick and exit |
+| `vectis run --interval 10` | Run with custom poll interval (seconds) |
+| `vectis run --workers 4` | Run with custom worker thread pool size |
+| `vectis seed "Title" --desc "..." --assign ceo` | Seed a root ticket |
+| `vectis status` | Show system overview (agents, ticket counts, recent activity) |
+| `vectis agents` | List all agents with details |
+| `vectis tickets` | List all tickets with results |
+| `vectis tickets retry <ticket_id>` | Reset ticket retry counter and status back to OPEN |
+| `vectis tickets cancel <ticket_id>` | Cancel ticket and set status to FAILED |
+| `vectis budget topup <agent_id> <amount>` | Increase agent dollar budget limit |
+| `vectis logs <ticket_id>` | Pretty-print execution history, token costs, and latencies |
+| `vectis workspace <ticket_id>` | Inspect file workspace deliverables for a ticket |
+| `vectis tree` | Show ticket hierarchy tree |
+| `vectis tree 1` | Show tree for a specific ticket |
+| `vectis ui` | Start the zero-dependency embedded web dashboard (`http://127.0.0.1:8080`) |
+| `vectis ui --port 9000 --open` | Run dashboard on custom port and open in default browser |
+| `vectis monitor` | Start the live curses terminal dashboard over SSH |
+| `vectis monitor --interval 1.0` | Run terminal monitor with 1-second refresh rate |
 
 ## Observability & Dashboards
 
@@ -149,4 +151,27 @@ conn.commit()
 conn.close()
 "
 ```
+
+## Turnkey Deployment
+
+### Docker & Docker Compose
+Vectis includes an ultra-lightweight multi-stage Alpine Dockerfile (< 65 MB) and Docker Compose configuration:
+
+```bash
+# Start background daemon and web dashboard together:
+docker compose up -d
+
+# Check logs:
+docker compose logs -f daemon
+
+# Inspect web dashboard at http://localhost:8080
+```
+
+### Linux VPS / Systemd
+Auto-restart systemd unit files are provided:
+- `vectis.service`: Heartbeat execution daemon
+- `vectis-ui.service`: Embedded web dashboard
+
+See [docs/DEPLOYMENT.md](file:///home/muhaimin/Documents/vectis/docs/DEPLOYMENT.md) for complete production setup instructions.
+
  

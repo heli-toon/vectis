@@ -10,7 +10,7 @@ from init_db import init_database
 def ensure_db():
     """Check that the database has been initialized."""
     if not os.path.exists(config.DB_PATH):
-        print(f"Database not found at {config.DB_PATH}. Run 'python main.py init' first.")
+        print(f"Database not found at {config.DB_PATH}. Run 'vectis init' or 'python main.py init' first.")
         sys.exit(1)
 
 
@@ -187,7 +187,7 @@ def cmd_budget(args):
     if action == "topup":
         cmd_budget_topup(args)
     else:
-        print("Usage: python main.py budget topup <agent_id> <amount>")
+        print("Usage: vectis budget topup <agent_id> <amount>")
 
 
 def cmd_budget_topup(args):

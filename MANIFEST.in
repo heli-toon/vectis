@@ -1,0 +1,5 @@
+include schema.sql
+recursive-include templates *.html
+include LICENSE
+include README.md
+include WAY_FORWARD.md

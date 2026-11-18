@@ -1,0 +1,46 @@
+services:
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vectis-daemon
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - VECTIS_DB_PATH=/app/data/vectis.db
+      - VECTIS_WORKSPACES_DIR=/app/workspaces
+      - VECTIS_POLL_INTERVAL=30
+      - VECTIS_MAX_WORKERS=4
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - vectis-data:/app/data
+      - vectis-workspaces:/app/workspaces
+    command: ["run"]
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vectis-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - VECTIS_DB_PATH=/app/data/vectis.db
+      - VECTIS_WORKSPACES_DIR=/app/workspaces
+    volumes:
+      - vectis-data:/app/data
+      - vectis-workspaces:/app/workspaces
+    command: ["ui", "--host", "0.0.0.0", "--port", "8080"]
+    depends_on:
+      - daemon
+
+volumes:
+  vectis-data:
+    name: vectis-data
+  vectis-workspaces:
+    name: vectis-workspaces
