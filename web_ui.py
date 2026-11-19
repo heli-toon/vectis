@@ -149,6 +149,8 @@ class VectisRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.handle_api_tree(conn)
             elif path == "/api/logs":
                 self.handle_api_logs(conn, query)
+            elif path == "/api/memories":
+                self.handle_api_memories(conn, query)
             elif path.startswith("/api/workspaces/"):
                 parts = path.strip("/").split("/")
                 # Pattern: api/workspaces/<ticket_id> or api/workspaces/<ticket_id>/file
@@ -180,6 +182,12 @@ class VectisRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.handle_post_tickets_retry(conn, body)
             elif path == "/api/tickets/cancel":
                 self.handle_post_tickets_cancel(conn, body)
+            elif path == "/api/tickets/approve":
+                self.handle_post_tickets_approve(conn, body)
+            elif path == "/api/tickets/reject":
+                self.handle_post_tickets_reject(conn, body)
+            elif path == "/api/memories":
+                self.handle_post_memories(conn, body)
             elif path == "/api/budget/topup":
                 self.handle_post_budget_topup(conn, body)
             elif path == "/api/agents/toggle":
@@ -334,16 +342,20 @@ class VectisRequestHandler(http.server.BaseHTTPRequestHandler):
             self._send_error(f"Agent '{assigned_to}' does not exist", status=400)
             return
 
+        requires_approval = 1 if body.get("requires_approval") else 0
+        status = "AWAITING_APPROVAL" if requires_approval else "OPEN"
+
         cursor = conn.execute(
-            "INSERT INTO tickets (title, description, assigned_to, created_by) VALUES (?, ?, ?, ?)",
-            (title.strip(), description, assigned_to, "web_ui"),
+            "INSERT INTO tickets (title, description, assigned_to, created_by, status, requires_approval) VALUES (?, ?, ?, ?, ?, ?)",
+            (title.strip(), description, assigned_to, "web_ui", status, requires_approval),
         )
         conn.commit()
         ticket_id = cursor.lastrowid
         self._send_json({
             "success": True,
             "ticket_id": ticket_id,
-            "message": f"Ticket #{ticket_id} seeded successfully",
+            "status": status,
+            "message": f"Ticket #{ticket_id} seeded successfully ({status})",
         })
 
     def handle_post_tickets_retry(self, conn, body):
@@ -388,6 +400,87 @@ class VectisRequestHandler(http.server.BaseHTTPRequestHandler):
             "success": True,
             "ticket_id": ticket_id,
             "message": f"Ticket #{ticket_id} cancelled (status: FAILED)",
+        })
+
+    def handle_post_tickets_approve(self, conn, body):
+        ticket_id = body.get("ticket_id")
+        if ticket_id is None:
+            self._send_error("Field 'ticket_id' is required", status=400)
+            return
+
+        ticket = conn.execute("SELECT id, status FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if not ticket:
+            self._send_error(f"Ticket #{ticket_id} not found", status=404)
+            return
+
+        conn.execute(
+            "UPDATE tickets SET status = 'OPEN', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (ticket_id,),
+        )
+        conn.commit()
+        self._send_json({
+            "success": True,
+            "ticket_id": ticket_id,
+            "message": f"Ticket #{ticket_id} approved -> OPEN",
+        })
+
+    def handle_post_tickets_reject(self, conn, body):
+        ticket_id = body.get("ticket_id")
+        reason = body.get("reason", "Rejected by operator via Web UI")
+        if ticket_id is None:
+            self._send_error("Field 'ticket_id' is required", status=400)
+            return
+
+        ticket = conn.execute("SELECT id FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if not ticket:
+            self._send_error(f"Ticket #{ticket_id} not found", status=404)
+            return
+
+        conn.execute(
+            "UPDATE tickets SET status = 'FAILED', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (reason, ticket_id),
+        )
+        conn.commit()
+        self._send_json({
+            "success": True,
+            "ticket_id": ticket_id,
+            "message": f"Ticket #{ticket_id} rejected -> FAILED ({reason})",
+        })
+
+    def handle_api_memories(self, conn, query):
+        from memory import list_memories, search_memories
+        q = query.get("q", [None])[0]
+        limit = int(query.get("limit", [50])[0]) if "limit" in query else 50
+        if q and q.strip():
+            results = search_memories(conn, q.strip(), limit=limit)
+        else:
+            results = list_memories(conn, limit=limit)
+        self._send_json(results)
+
+    def handle_post_memories(self, conn, body):
+        from memory import record_memory
+        title = body.get("title")
+        content = body.get("content")
+        tags = body.get("tags", "")
+
+        if not title or not isinstance(title, str) or not title.strip():
+            self._send_error("Field 'title' is required and must be non-empty", status=400)
+            return
+        if not content or not isinstance(content, str) or not content.strip():
+            self._send_error("Field 'content' is required and must be non-empty", status=400)
+            return
+
+        mem_id = record_memory(
+            conn,
+            title=title.strip(),
+            content=content.strip(),
+            tags=tags.strip() if isinstance(tags, str) else "",
+            agent_id=body.get("agent_id"),
+        )
+        self._send_json({
+            "success": True,
+            "memory_id": mem_id,
+            "message": f"Institutional memory #{mem_id} recorded successfully",
         })
 
     def handle_post_budget_topup(self, conn, body):

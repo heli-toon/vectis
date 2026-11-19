@@ -188,6 +188,22 @@ def build_memento_context(conn, agent, ticket):
             log_lines.append(line)
         sections.append("\n## Execution History\n" + "\n".join(log_lines))
 
+    # Relevant Institutional Knowledge
+    try:
+        from memory import search_memories
+        search_query = f"{ticket['title']} {ticket['description']}"
+        past_memories = search_memories(conn, search_query, limit=3)
+        if past_memories:
+            mem_lines = []
+            for m in past_memories:
+                snippet = m["content"].strip()
+                if len(snippet) > 200:
+                    snippet = snippet[:200] + "..."
+                mem_lines.append(f"- [{m['title']}]: {snippet}")
+            sections.append("\n## Relevant Institutional Knowledge\n" + "\n".join(mem_lines))
+    except Exception:
+        pass
+
     # Available tools
     tools_section = (
         "\n## Available Tools\n"
@@ -200,7 +216,11 @@ def build_memento_context(conn, agent, ticket):
         "3. directory_list(path=\".\"): Inspect files and folders inside the workspace.\n"
         "   Args: {\"path\": \".\"}\n"
         "4. execute_command(command, timeout_sec=30): Execute a shell command inside the workspace directory.\n"
-        "   Args: {\"command\": \"python3 -m unittest\", \"timeout_sec\": 30}"
+        "   Args: {\"command\": \"python3 -m unittest\", \"timeout_sec\": 30}\n"
+        "5. search_knowledge(query, limit=3): Search past solutions and institutional memory.\n"
+        "   Args: {\"query\": \"search keywords\"}\n"
+        "6. http_request(url, method=\"GET\"): Fetch web documentation or API data safely.\n"
+        "   Args: {\"url\": \"https://example.com/api\"}"
     )
     sections.append(tools_section)
 
@@ -462,6 +482,11 @@ def process_ticket(conn, ticket_id):
     if not agent:
         return
 
+    # Guard against processing tickets awaiting human operator approval
+    if "status" in ticket.keys() and ticket["status"] == "AWAITING_APPROVAL":
+        print(f"  [skip] Ticket #{ticket_id} is AWAITING_APPROVAL")
+        return
+
     # Budget check (FR-4.1)
     if agent["current_spend"] >= agent["budget_limit"]:
         update_ticket_status(conn, ticket_id, "PAUSED_BUDGET")
@@ -569,7 +594,7 @@ def process_ticket(conn, ticket_id):
     tool_results = []
     if tool_calls:
         workspace_dir = get_ticket_workspace(conn, ticket_id, create=True)
-        tool_results = execute_tool_calls(workspace_dir, tool_calls)
+        tool_results = execute_tool_calls(workspace_dir, tool_calls, conn=conn, agent_id=agent["id"])
         for tr in tool_results:
             t_name = tr.get("tool", "unknown")
             if tr.get("success"):
@@ -601,6 +626,20 @@ def process_ticket(conn, ticket_id):
     else:
         update_ticket_status(conn, ticket_id, new_status, result=result)
         print(f"  [done] Ticket #{ticket_id} -> {new_status}")
+        # Automatically distill completed ticket results into institutional memory
+        if new_status == "DONE" and result:
+            try:
+                from memory import record_memory
+                record_memory(
+                    conn,
+                    title=f"Resolution: {ticket['title']}",
+                    content=result,
+                    tags=f"ticket_{ticket['id']},{agent['id']}",
+                    agent_id=agent["id"],
+                    ticket_id=ticket["id"],
+                )
+            except Exception as e:
+                print(f"  [memory error] Failed to record institutional memory: {e}")
 
     if result:
         print(f"  [result] {result[:200]}")

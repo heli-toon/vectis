@@ -243,16 +243,145 @@ def execute_command(workspace_dir, command, timeout_sec=None, max_output_bytes=N
         }
 
 
+def search_knowledge(workspace_dir, query, limit=3, conn=None):
+    """Search institutional memory using SQLite FTS5 BM25 relevance ranking."""
+    if conn is None:
+        conn = config.get_db_connection()
+        close_conn = True
+    else:
+        close_conn = False
+
+    try:
+        from memory import search_memories
+        results = search_memories(conn, query, limit=limit)
+        return {
+            "success": True,
+            "query": query,
+            "count": len(results),
+            "memories": results,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "query": query,
+            "error": str(e),
+        }
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def http_request(
+    workspace_dir,
+    url,
+    method="GET",
+    headers=None,
+    data=None,
+    timeout_sec=15,
+    max_bytes=None,
+):
+    """Fetch web content or API response safely using Python standard library urllib."""
+    import urllib.request
+    import urllib.error
+
+    if max_bytes is None:
+        max_bytes = getattr(config, "MAX_HTTP_RESPONSE_BYTES", 20480)
+
+    if not isinstance(url, str) or not (url.startswith("http://") or url.startswith("https://")):
+        return {
+            "success": False,
+            "url": url,
+            "error": "URL must start with http:// or https://",
+        }
+
+    method = (method or "GET").upper()
+    if method not in ("GET", "POST", "HEAD", "PUT"):
+        return {
+            "success": False,
+            "url": url,
+            "error": f"Unsupported HTTP method '{method}'",
+        }
+
+    req_headers = {"User-Agent": "Vectis-Agent/0.3.0"}
+    if isinstance(headers, dict):
+        req_headers.update(headers)
+
+    encoded_data = None
+    if data is not None:
+        if isinstance(data, dict):
+            encoded_data = json.dumps(data).encode("utf-8")
+            req_headers.setdefault("Content-Type", "application/json")
+        elif isinstance(data, str):
+            encoded_data = data.encode("utf-8")
+
+    try:
+        req = urllib.request.Request(
+            url=url,
+            data=encoded_data,
+            headers=req_headers,
+            method=method,
+        )
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            raw_content = resp.read(max_bytes + 1)
+            truncated = len(raw_content) > max_bytes
+            content_str = raw_content[:max_bytes].decode("utf-8", errors="replace")
+            return {
+                "success": True,
+                "url": url,
+                "status_code": resp.status,
+                "content": content_str,
+                "truncated": truncated,
+                "bytes_read": len(raw_content[:max_bytes]),
+            }
+    except urllib.error.HTTPError as e:
+        raw_body = e.read(max_bytes) if hasattr(e, "read") else b""
+        body_str = raw_body[:max_bytes].decode("utf-8", errors="replace")
+        return {
+            "success": False,
+            "url": url,
+            "status_code": e.code,
+            "error": f"HTTP {e.code}: {e.reason}",
+            "body": body_str,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "url": url,
+            "error": str(e),
+        }
+
+
 AVAILABLE_TOOLS = {
     "file_write": file_write,
     "file_read": file_read,
     "directory_list": directory_list,
     "execute_command": execute_command,
+    "search_knowledge": search_knowledge,
+    "http_request": http_request,
 }
 
 
-def dispatch_tool(workspace_dir, tool_name, args=None):
-    """Dispatch a tool call to the corresponding implementation."""
+def check_agent_tool_permission(conn, agent_id, tool_name):
+    """Check if agent_id is permitted to execute tool_name."""
+    if not agent_id or not conn:
+        return True, ""
+    row = conn.execute("SELECT allowed_tools FROM agents WHERE id = ?", (agent_id,)).fetchone()
+    if not row:
+        return True, ""
+    allowed_str = row["allowed_tools"] if "allowed_tools" in row.keys() else "*"
+    if not allowed_str or allowed_str == "*":
+        return True, ""
+    allowed_set = {t.strip() for t in allowed_str.split(",") if t.strip()}
+    if tool_name not in allowed_set:
+        return False, (
+            f"Permission denied: Agent '{agent_id}' is not authorized to use tool '{tool_name}'. "
+            f"Authorized tools: {', '.join(sorted(allowed_set))}"
+        )
+    return True, ""
+
+
+def dispatch_tool(workspace_dir, tool_name, args=None, conn=None, agent_id=None):
+    """Dispatch a tool call to the corresponding implementation with RBAC permission checks."""
     if args is None:
         args = {}
     if not isinstance(args, dict):
@@ -270,8 +399,23 @@ def dispatch_tool(workspace_dir, tool_name, args=None):
             "error": f"Unknown tool '{tool_name}'. Available tools: {', '.join(sorted(AVAILABLE_TOOLS.keys()))}",
         }
 
+    # Verify agent tool permission if agent_id and conn are supplied
+    if agent_id and conn:
+        allowed, perm_err = check_agent_tool_permission(conn, agent_id, tool_name)
+        if not allowed:
+            return {
+                "tool": tool_name,
+                "success": False,
+                "error": perm_err,
+            }
+
     try:
-        res = func(workspace_dir, **args)
+        # Pass conn to tools that require database access if not provided in args
+        call_args = dict(args)
+        if tool_name == "search_knowledge" and "conn" not in call_args and conn is not None:
+            call_args["conn"] = conn
+
+        res = func(workspace_dir, **call_args)
         if isinstance(res, dict):
             res["tool"] = tool_name
             return res
@@ -290,7 +434,7 @@ def dispatch_tool(workspace_dir, tool_name, args=None):
         }
 
 
-def execute_tool_calls(workspace_dir, tool_calls):
+def execute_tool_calls(workspace_dir, tool_calls, conn=None, agent_id=None):
     """Execute a list of tool call dictionaries within workspace_dir."""
     results = []
     if not isinstance(tool_calls, list):
@@ -315,7 +459,7 @@ def execute_tool_calls(workspace_dir, tool_calls):
             })
             continue
 
-        result = dispatch_tool(workspace_dir, tool_name, args)
+        result = dispatch_tool(workspace_dir, tool_name, args, conn=conn, agent_id=agent_id)
         results.append(result)
 
     return results

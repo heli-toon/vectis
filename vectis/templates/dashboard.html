@@ -309,6 +309,7 @@
     .badge-DONE { background: var(--success-subtle); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.25); }
     .badge-FAILED { background: var(--danger-subtle); color: var(--danger); border: 1px solid rgba(244, 63, 94, 0.25); }
     .badge-PAUSED_BUDGET { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-AWAITING_APPROVAL { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); }
     .badge-ACTIVE { background: var(--success-subtle); color: var(--success); }
     .badge-DISABLED { background: #27272a; color: var(--text-dim); }
 
@@ -1141,6 +1142,10 @@
           : '';
 
         let actions = '';
+        if (node.status === 'AWAITING_APPROVAL') {
+          actions += `<button class="btn-success btn-sm" onclick="approveTicket(${node.id})">Approve</button> `;
+          actions += `<button class="btn-danger btn-sm" onclick="rejectTicket(${node.id})">Reject</button> `;
+        }
         if (node.status === 'FAILED') {
           actions += `<button class="btn-outline btn-sm" onclick="retryTicket(${node.id})">Retry</button>`;
         }
@@ -1198,6 +1203,10 @@
         const created = (t.created_at || '').slice(0, 19).replace('T', ' ');
 
         let actionBtns = '';
+        if (t.status === 'AWAITING_APPROVAL') {
+          actionBtns += `<button class="btn-success btn-sm" onclick="approveTicket(${t.id})">Approve</button> `;
+          actionBtns += `<button class="btn-danger btn-sm" onclick="rejectTicket(${t.id})">Reject</button> `;
+        }
         if (t.status === 'FAILED') {
           actionBtns += `<button class="btn-outline btn-sm" onclick="retryTicket(${t.id})">Retry</button> `;
         }
@@ -1491,6 +1500,46 @@
           await refreshAll();
         } else {
           showToast(data.error || 'Failed to cancel ticket', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function approveTicket(ticketId) {
+      try {
+        const res = await fetch('/api/tickets/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_id: ticketId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Ticket #${ticketId} approved -> OPEN`, 'success');
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to approve ticket', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function rejectTicket(ticketId) {
+      const reason = prompt('Enter rejection reason (optional):', 'Rejected by operator');
+      if (reason === null) return;
+      try {
+        const res = await fetch('/api/tickets/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket_id: ticketId, reason })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Ticket #${ticketId} rejected`, 'info');
+          await refreshAll();
+        } else {
+          showToast(data.error || 'Failed to reject ticket', 'error');
         }
       } catch (err) {
         showToast(err.message, 'error');

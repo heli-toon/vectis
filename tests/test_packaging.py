@@ -19,7 +19,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def test_vectis_package_exports():
     """Verify top-level package metadata and exports."""
     assert hasattr(vectis, "__version__")
-    assert vectis.__version__ == "0.2.0"
+    assert vectis.__version__ == "0.3.0"
     for expected_symbol in [
         "init_database",
         "run_daemon",
@@ -29,6 +29,10 @@ def test_vectis_package_exports():
         "get_ticket_workspace",
         "dispatch_tool",
         "execute_tool_calls",
+        "check_agent_tool_permission",
+        "record_memory",
+        "search_memories",
+        "list_memories",
         "config",
     ]:
         assert hasattr(vectis, expected_symbol), f"Missing symbol {expected_symbol} in vectis module"
@@ -45,7 +49,7 @@ def test_pyproject_toml_configuration():
 
     project = data.get("project", {})
     assert project.get("name") == "vectis"
-    assert project.get("version") == "0.2.0"
+    assert project.get("version") == "0.3.0"
     assert "litellm>=1.0.0" in project.get("dependencies", [])
     assert project.get("scripts", {}).get("vectis") == "main:main"
 

@@ -80,6 +80,7 @@ flowchart LR
     P2 --> P3["Phase 3: High-Efficiency Concurrency"]
     P3 --> P4["Phase 4: Observability & Web UI"]
     P4 --> P5["Phase 5: Production & Packaging"]
+    P5 --> P6["Phase 6: Institutional Memory & HITL Guardrails"]
 ```
 
 ---
@@ -255,6 +256,30 @@ Implement pure Python standard-library tools:
 
 ---
 
+### Phase 6: Institutional Memory (Zero-Bloat SQLite FTS5 RAG) & Human-in-the-Loop (HITL) Guardrails (Weeks 11 – 12)
+**Goal:** Empower agents with cross-ticket institutional memory using zero-RAM native SQLite FTS5, enforce granular role-based tool ACLs, and introduce Human-in-the-Loop (HITL) review gates.
+
+#### 6.1 Native SQLite FTS5 Institutional Memory
+- Table `memories` with `memories_fts` virtual table using SQLite's native FTS5 engine and Porter stemming (`tokenize='porter unicode61'`).
+- Automatic knowledge distillation: When a ticket completes (`status = 'DONE'`), automatically distill the ticket resolution into institutional memory.
+- Memento context injection: Dynamically query top-k relevant past knowledge solutions based on the current ticket title/description, providing zero-RAM cross-ticket RAG.
+- Built-in `search_knowledge` tool allowing agents to query organizational memory on demand.
+
+#### 6.2 Granular Agent Tool Permissions (RBAC) & Web Fetch Tool
+- Column `allowed_tools` on `agents` (e.g. `ceo` restricted from shell execution; `dev` authorized for tools; `copywriter` limited to docs).
+- Runtime permission verification in `dispatch_tool` preventing unauthorized privilege escalation.
+- Zero-dependency `http_request` tool using Python's standard `urllib.request` for web documentation and API fetches with strict size and timeout caps.
+
+#### 6.3 Human-in-the-Loop (HITL) Approval Gates
+- New ticket state: `AWAITING_APPROVAL` with `requires_approval` column.
+- Heartbeat daemon holds `AWAITING_APPROVAL` tickets until operator review.
+- Operator workflows:
+  - CLI: `vectis tickets approve <id>`, `vectis tickets reject <id> [--reason ...]`, `vectis seed "Title" --approval`.
+  - Embedded Web UI: Dedicated `AWAITING_APPROVAL` status badges with inline Approve and Reject controls, plus REST API endpoints.
+- Institutional Memory management via CLI (`vectis memory add`, `vectis memory search`) and Web UI REST endpoints.
+
+---
+
 ## 4. Technical Architecture Specifications
 
 ### 4.1 Target Process & Memory Budget
@@ -269,7 +294,10 @@ Implement pure Python standard-library tools:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> OPEN: Seed / Delegate
+    [*] --> OPEN: Seed (normal)
+    [*] --> AWAITING_APPROVAL: Seed (requires_approval)
+    AWAITING_APPROVAL --> OPEN: Operator Approve
+    AWAITING_APPROVAL --> FAILED: Operator Reject
     OPEN --> IN_PROGRESS: claim_ticket()
     IN_PROGRESS --> DONE: Execution complete
     IN_PROGRESS --> REVIEW: Waiting on sub-tickets
@@ -372,7 +400,25 @@ stateDiagram-v2
   - Author `docs/DEPLOYMENT.md` detailing step-by-step installation, VPS setup, Docker execution, and security hardening.
   - Build `tests/test_packaging.py` validating package exports, pyproject config, resource resolution, Docker and Systemd files, and CLI execution (86 passing tests).
 
+### Sprint 6: Phase 6 — Institutional Memory & HITL Guardrails
+- [x] ✅ **Task 27: Native SQLite FTS5 Knowledge Base & Memory Schema**
+  - Update `schema.sql`, `vectis/schema.sql`, and `init_db.py` with `memories`, `memories_fts` (Porter stemmer), sync triggers, and migrations.
+  - Add `allowed_tools` column to `agents` and `requires_approval` + `AWAITING_APPROVAL` status to `tickets`.
+- [x] ✅ **Task 28: Zero-Bloat Institutional Memory Engine (`memory.py`) & Memento RAG**
+  - Implement `memory.py` with `record_memory`, `search_memories`, `list_memories`, and `sanitize_fts5_query`.
+  - Inject top-k relevant historical memories into `build_memento_context` during prompt hydration.
+  - Automatically distill completed tickets (`DONE`) into institutional knowledge.
+- [x] ✅ **Task 29: Agent Tool Permissions (RBAC) & Zero-Dependency `http_request` Tool**
+  - Enforce per-agent tool execution permissions in `dispatch_tool` and `execute_tool_calls`.
+  - Implement `search_knowledge` tool and `http_request` web fetch tool in `tools.py`.
+- [x] ✅ **Task 30: Human-in-the-Loop (HITL) Workflows & Operator Controls**
+  - Implement `AWAITING_APPROVAL` ticket holding in heartbeat engine.
+  - CLI: add `vectis tickets approve <id>`, `vectis tickets reject <id>`, `vectis seed --approval`, `vectis memory add`, and `vectis memory search`.
+  - Web UI: add `POST /api/tickets/approve`, `POST /api/tickets/reject`, `GET /api/memories`, `POST /api/memories`, and dashboard UI approval buttons.
+- [x] ✅ **Task 31: Phase 6 Test Suite & System Verification**
+  - Build `tests/test_memory.py` and `tests/test_hitl.py` validating FTS5 BM25 search, RBAC tool gating, HITL approval flows, and memory benchmarks (101 passing tests).
+
 ---
 
 *Document Author: Vectis Core Architecture Team*  
-*Last Updated: 2026-11-18*
+*Last Updated: 2026-11-19*

@@ -239,3 +239,48 @@ def test_cli_monitor_command(tmp_path, monkeypatch, capsys):
         mock_monitor.assert_called_once_with(interval_sec=1.5, db_path=db_file)
 
 
+def test_cli_memory_commands(tmp_path, monkeypatch, capsys):
+    """Verify 'memory' add and search CLI subcommands."""
+    db_file = str(tmp_path / "cli_mem_test.db")
+    monkeypatch.setattr(config, "DB_PATH", db_file)
+    run_cli_args(["init"], monkeypatch, capsys)
+
+    # Add memory
+    add_out = run_cli_args(
+        ["memory", "add", "--title", "FTS5 Guide", "--content", "Use SQLite FTS5 for zero-RAM search", "--tags", "sqlite,search"],
+        monkeypatch,
+        capsys,
+    )
+    assert "Recorded institutional memory #1" in add_out.out
+
+    # Search memory
+    search_out = run_cli_args(
+        ["memory", "search", "zero-RAM"],
+        monkeypatch,
+        capsys,
+    )
+    assert "Search Results for 'zero-RAM' (1 matches)" in search_out.out
+    assert "FTS5 Guide" in search_out.out
+
+
+def test_cli_seed_with_approval_flag(tmp_path, monkeypatch, capsys):
+    """Verify 'seed' command with --approval sets AWAITING_APPROVAL status."""
+    db_file = str(tmp_path / "cli_seed_appr_test.db")
+    monkeypatch.setattr(config, "DB_PATH", db_file)
+    run_cli_args(["init"], monkeypatch, capsys)
+
+    out = run_cli_args(
+        ["seed", "Deploy Microservice", "--desc", "Requires human review", "--assign", "dev", "--approval"],
+        monkeypatch,
+        capsys,
+    )
+    assert "Status: AWAITING_APPROVAL" in out.out
+
+    conn = config.get_db_connection()
+    t = conn.execute("SELECT status, requires_approval FROM tickets WHERE id = 1").fetchone()
+    assert t["status"] == "AWAITING_APPROVAL"
+    assert t["requires_approval"] == 1
+    conn.close()
+
+
+

@@ -28,6 +28,7 @@ DEFAULT_AGENTS = [
         "model_name": "gemini/gemini-2.5-flash",
         "manager_id": None,
         "budget_limit": 5.00,
+        "allowed_tools": "search_knowledge",
     },
     {
         "id": "dev",
@@ -47,6 +48,7 @@ DEFAULT_AGENTS = [
         "model_name": "groq/llama-3.3-70b",
         "manager_id": "ceo",
         "budget_limit": 5.00,
+        "allowed_tools": "file_write,file_read,directory_list,execute_command,search_knowledge,http_request",
     },
     {
         "id": "copywriter",
@@ -65,6 +67,7 @@ DEFAULT_AGENTS = [
         "model_name": "anthropic/claude-3-5-haiku",
         "manager_id": "ceo",
         "budget_limit": 5.00,
+        "allowed_tools": "file_write,file_read,directory_list,search_knowledge,http_request",
     },
     {
         "id": "reviewer",
@@ -83,6 +86,7 @@ DEFAULT_AGENTS = [
         "model_name": "gemini/gemini-2.5-flash",
         "manager_id": "ceo",
         "budget_limit": 5.00,
+        "allowed_tools": "file_read,directory_list,execute_command,search_knowledge",
     },
 ]
 
@@ -99,19 +103,103 @@ def init_database():
         ("tickets", "retry_count", "INTEGER DEFAULT 0"),
         ("tickets", "max_retries", "INTEGER DEFAULT 3"),
         ("tickets", "error_message", "TEXT"),
+        ("tickets", "requires_approval", "INTEGER DEFAULT 0"),
         ("execution_logs", "execution_time_ms", "INTEGER DEFAULT 0"),
         ("execution_logs", "tool_calls", "TEXT"),
+        ("agents", "allowed_tools", "TEXT DEFAULT '*'"),
     ]
     for table, col, col_def in migrations:
         cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
         if col not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
 
+    # Check if tickets table needs status check constraint migration for AWAITING_APPROVAL
+    table_sql_row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='tickets'"
+    ).fetchone()
+    if table_sql_row and "AWAITING_APPROVAL" not in table_sql_row[0]:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE tickets RENAME TO _tickets_old")
+        conn.execute(
+            """CREATE TABLE tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                assigned_to TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                parent_ticket_id INTEGER,
+                status TEXT CHECK(status IN ('OPEN', 'IN_PROGRESS', 'REVIEW', 'DONE', 'FAILED', 'PAUSED_BUDGET', 'AWAITING_APPROVAL')) DEFAULT 'OPEN',
+                result TEXT,
+                retry_count INTEGER DEFAULT 0,
+                max_retries INTEGER DEFAULT 3,
+                error_message TEXT,
+                requires_approval INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(assigned_to) REFERENCES agents(id),
+                FOREIGN KEY(parent_ticket_id) REFERENCES tickets(id)
+            )"""
+        )
+        old_cols = [r["name"] for r in conn.execute("PRAGMA table_info(_tickets_old)").fetchall()]
+        target_cols = [
+            "id", "title", "description", "assigned_to", "created_by",
+            "parent_ticket_id", "status", "result", "retry_count",
+            "max_retries", "error_message", "requires_approval",
+            "created_at", "updated_at",
+        ]
+        common_cols = [c for c in target_cols if c in old_cols]
+        cols_str = ", ".join(common_cols)
+        conn.execute(f"INSERT INTO tickets ({cols_str}) SELECT {cols_str} FROM _tickets_old")
+        conn.execute("DROP TABLE _tickets_old")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tickets_assigned_status ON tickets(assigned_to, status)")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+    # Ensure memories and memories_fts tables exist
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            tags TEXT DEFAULT '',
+            agent_id TEXT,
+            ticket_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(agent_id) REFERENCES agents(id),
+            FOREIGN KEY(ticket_id) REFERENCES tickets(id)
+        )"""
+    )
+    conn.execute(
+        """CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+            title,
+            content,
+            tags,
+            content='memories',
+            content_rowid='id',
+            tokenize='porter unicode61'
+        )"""
+    )
+    conn.execute(
+        """CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+            INSERT INTO memories_fts(rowid, title, content, tags) VALUES (new.id, new.title, new.content, new.tags);
+        END;"""
+    )
+    conn.execute(
+        """CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, title, content, tags) VALUES ('delete', old.id, old.title, old.content, old.tags);
+        END;"""
+    )
+    conn.execute(
+        """CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, title, content, tags) VALUES ('delete', old.id, old.title, old.content, old.tags);
+            INSERT INTO memories_fts(rowid, title, content, tags) VALUES (new.id, new.title, new.content, new.tags);
+        END;"""
+    )
+
     for agent in DEFAULT_AGENTS:
         conn.execute(
             """INSERT OR IGNORE INTO agents
-               (id, name, role, system_prompt, model_name, manager_id, budget_limit)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (id, name, role, system_prompt, model_name, manager_id, budget_limit, allowed_tools)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 agent["id"],
                 agent["name"],
@@ -120,7 +208,13 @@ def init_database():
                 agent["model_name"],
                 agent["manager_id"],
                 agent["budget_limit"],
+                agent["allowed_tools"],
             ),
+        )
+        # Update allowed_tools if existing agent didn't have it set
+        conn.execute(
+            "UPDATE agents SET allowed_tools = ? WHERE id = ? AND (allowed_tools IS NULL OR allowed_tools = '*')",
+            (agent["allowed_tools"], agent["id"]),
         )
 
     conn.commit()
@@ -139,4 +233,3 @@ def init_database():
 
 if __name__ == "__main__":
     init_database()
- 

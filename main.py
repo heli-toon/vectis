@@ -32,15 +32,18 @@ def cmd_run(args):
 def cmd_seed(args):
     ensure_db()
     conn = config.get_db_connection()
+    status = "AWAITING_APPROVAL" if getattr(args, "approval", False) else "OPEN"
+    requires_approval = 1 if getattr(args, "approval", False) else 0
     cursor = conn.execute(
-        "INSERT INTO tickets (title, description, assigned_to, created_by) VALUES (?, ?, ?, ?)",
-        (args.title, args.desc or "", args.assign, "human_user"),
+        "INSERT INTO tickets (title, description, assigned_to, created_by, status, requires_approval) VALUES (?, ?, ?, ?, ?, ?)",
+        (args.title, args.desc or "", args.assign, "human_user", status, requires_approval),
     )
     conn.commit()
     ticket_id = cursor.lastrowid
     conn.close()
     print(f"Seeded ticket #{ticket_id}: {args.title}")
     print(f"  Assigned to: {args.assign}")
+    print(f"  Status: {status}")
     if args.desc:
         print(f"  Description: {args.desc}")
 
@@ -71,7 +74,7 @@ def cmd_status(args):
 
     total_tickets = sum(status_counts.values())
     print(f"\nTickets ({total_tickets} total):")
-    for status in ["OPEN", "IN_PROGRESS", "REVIEW", "DONE", "FAILED", "PAUSED_BUDGET"]:
+    for status in ["OPEN", "AWAITING_APPROVAL", "IN_PROGRESS", "REVIEW", "DONE", "FAILED", "PAUSED_BUDGET"]:
         count = status_counts.get(status, 0)
         if count > 0:
             print(f"  {status}: {count}")
@@ -125,6 +128,10 @@ def cmd_tickets(args):
         cmd_tickets_retry(args)
     elif action == "cancel":
         cmd_tickets_cancel(args)
+    elif action == "approve":
+        cmd_tickets_approve(args)
+    elif action == "reject":
+        cmd_tickets_reject(args)
     else:
         conn = config.get_db_connection()
         tickets = conn.execute("SELECT * FROM tickets ORDER BY id").fetchall()
@@ -180,6 +187,102 @@ def cmd_tickets_cancel(args):
     conn.commit()
     conn.close()
     print(f"Ticket #{args.ticket_id} cancelled (status: FAILED).")
+
+
+def cmd_tickets_approve(args):
+    ensure_db()
+    conn = config.get_db_connection()
+    ticket = conn.execute("SELECT * FROM tickets WHERE id = ?", (args.ticket_id,)).fetchone()
+    if not ticket:
+        print(f"Ticket #{args.ticket_id} not found.")
+        conn.close()
+        return
+    if ticket["status"] != "AWAITING_APPROVAL":
+        print(f"Ticket #{args.ticket_id} is in status '{ticket['status']}', not AWAITING_APPROVAL.")
+        conn.close()
+        return
+
+    conn.execute(
+        "UPDATE tickets SET status = 'OPEN', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (args.ticket_id,),
+    )
+    conn.commit()
+    conn.close()
+    print(f"Ticket #{args.ticket_id} approved -> status set to OPEN.")
+
+
+def cmd_tickets_reject(args):
+    ensure_db()
+    conn = config.get_db_connection()
+    ticket = conn.execute("SELECT * FROM tickets WHERE id = ?", (args.ticket_id,)).fetchone()
+    if not ticket:
+        print(f"Ticket #{args.ticket_id} not found.")
+        conn.close()
+        return
+
+    reason = getattr(args, "reason", "Rejected by human operator") or "Rejected by human operator"
+    conn.execute(
+        "UPDATE tickets SET status = 'FAILED', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (reason, args.ticket_id),
+    )
+    conn.commit()
+    conn.close()
+    print(f"Ticket #{args.ticket_id} rejected -> status set to FAILED ({reason}).")
+
+
+def cmd_memory(args):
+    ensure_db()
+    action = getattr(args, "memory_action", None)
+    if action == "search":
+        cmd_memory_search(args)
+    elif action == "add":
+        cmd_memory_add(args)
+    else:
+        conn = config.get_db_connection()
+        from memory import list_memories
+        memories = list_memories(conn, limit=20)
+        conn.close()
+        print(f"\nInstitutional Knowledge Entries ({len(memories)}):")
+        print("-" * 70)
+        for m in memories:
+            tags_part = f" [{m['tags']}]" if m.get("tags") else ""
+            print(f"  #{m['id']}: {m['title']}{tags_part}")
+            preview = m['content'][:120] + "..." if len(m['content']) > 120 else m['content']
+            print(f"    {preview}")
+            print()
+
+
+def cmd_memory_search(args):
+    ensure_db()
+    conn = config.get_db_connection()
+    from memory import search_memories
+    results = search_memories(conn, args.query, limit=args.limit)
+    conn.close()
+
+    print(f"\nSearch Results for '{args.query}' ({len(results)} matches):")
+    print("-" * 70)
+    if not results:
+        print("  No institutional memories matched query.")
+    for m in results:
+        tags_part = f" [{m['tags']}]" if m.get("tags") else ""
+        print(f"  #{m['id']}: {m['title']}{tags_part} (BM25 rank: {m.get('rank', 0):.4f})")
+        print(f"    {m['content']}")
+        print()
+
+
+def cmd_memory_add(args):
+    ensure_db()
+    conn = config.get_db_connection()
+    from memory import record_memory
+    mem_id = record_memory(
+        conn,
+        title=args.title,
+        content=args.content,
+        tags=getattr(args, "tags", "") or "",
+        agent_id=None,
+    )
+    conn.close()
+    print(f"Recorded institutional memory #{mem_id}: '{args.title}'")
 
 
 def cmd_budget(args):
@@ -397,6 +500,7 @@ def main():
     seed_parser.add_argument("title", help="Ticket title")
     seed_parser.add_argument("--assign", default="ceo", help="Agent ID to assign to (default: ceo)")
     seed_parser.add_argument("--desc", help="Ticket description")
+    seed_parser.add_argument("--approval", action="store_true", help="Require human operator approval before execution")
 
     subparsers.add_parser("status", help="Show system status")
     subparsers.add_parser("agents", help="List all agents")
@@ -407,6 +511,21 @@ def main():
     retry_parser.add_argument("ticket_id", type=int, help="Ticket ID to retry")
     cancel_parser = tickets_sub.add_parser("cancel", help="Cancel ticket and set status to FAILED")
     cancel_parser.add_argument("ticket_id", type=int, help="Ticket ID to cancel")
+    approve_parser = tickets_sub.add_parser("approve", help="Approve a ticket awaiting human approval")
+    approve_parser.add_argument("ticket_id", type=int, help="Ticket ID to approve")
+    reject_parser = tickets_sub.add_parser("reject", help="Reject a ticket awaiting human approval")
+    reject_parser.add_argument("ticket_id", type=int, help="Ticket ID to reject")
+    reject_parser.add_argument("--reason", default="Rejected by operator", help="Rejection reason")
+
+    memory_parser = subparsers.add_parser("memory", help="Inspect and query institutional knowledge")
+    memory_sub = memory_parser.add_subparsers(dest="memory_action")
+    mem_search = memory_sub.add_parser("search", help="Search institutional knowledge")
+    mem_search.add_argument("query", help="Keywords to search")
+    mem_search.add_argument("--limit", type=int, default=5, help="Max results (default: 5)")
+    mem_add = memory_sub.add_parser("add", help="Add knowledge to institutional memory")
+    mem_add.add_argument("--title", required=True, help="Knowledge title")
+    mem_add.add_argument("--content", required=True, help="Knowledge content/solution")
+    mem_add.add_argument("--tags", default="", help="Comma-separated tags")
 
     budget_parser = subparsers.add_parser("budget", help="Manage agent budgets")
     budget_sub = budget_parser.add_subparsers(dest="budget_action")
@@ -446,6 +565,7 @@ def main():
         "workspace": cmd_workspace,
         "ui": cmd_ui,
         "monitor": cmd_monitor,
+        "memory": cmd_memory,
     }
 
     handler = commands.get(args.command)

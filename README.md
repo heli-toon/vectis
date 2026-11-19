@@ -34,9 +34,12 @@ Commands can be invoked directly via `vectis <cmd>` or via `python3 main.py <cmd
 | `vectis run --interval 10` | Run with custom poll interval (seconds) |
 | `vectis run --workers 4` | Run with custom worker thread pool size |
 | `vectis seed "Title" --desc "..." --assign ceo` | Seed a root ticket |
+| `vectis seed "Title" --approval` | Seed a root ticket requiring operator approval before execution |
 | `vectis status` | Show system overview (agents, ticket counts, recent activity) |
 | `vectis agents` | List all agents with details |
 | `vectis tickets` | List all tickets with results |
+| `vectis tickets approve <ticket_id>` | Approve a ticket awaiting operator approval (`AWAITING_APPROVAL` -> `OPEN`) |
+| `vectis tickets reject <ticket_id>` | Reject a ticket awaiting operator approval (`AWAITING_APPROVAL` -> `FAILED`) |
 | `vectis tickets retry <ticket_id>` | Reset ticket retry counter and status back to OPEN |
 | `vectis tickets cancel <ticket_id>` | Cancel ticket and set status to FAILED |
 | `vectis budget topup <agent_id> <amount>` | Increase agent dollar budget limit |
@@ -44,6 +47,8 @@ Commands can be invoked directly via `vectis <cmd>` or via `python3 main.py <cmd
 | `vectis workspace <ticket_id>` | Inspect file workspace deliverables for a ticket |
 | `vectis tree` | Show ticket hierarchy tree |
 | `vectis tree 1` | Show tree for a specific ticket |
+| `vectis memory add --title "..." --content "..."` | Record knowledge into institutional memory |
+| `vectis memory search "<query>"` | Query institutional memory via SQLite FTS5 BM25 ranking |
 | `vectis ui` | Start the zero-dependency embedded web dashboard (`http://127.0.0.1:8080`) |
 | `vectis ui --port 9000 --open` | Run dashboard on custom port and open in default browser |
 | `vectis monitor` | Start the live curses terminal dashboard over SSH |
@@ -91,6 +96,9 @@ Each agent has a role, system prompt, LLM model, budget limit, and manager. Agen
 ### Ticket Lifecycle
 
 ```
+[Seed --approval] → AWAITING_APPROVAL → OPEN (upon operator approval)
+                                      → FAILED (upon operator rejection)
+
 OPEN → IN_PROGRESS → DONE
                    → REVIEW (delegated, waiting on sub-tasks)
                    → FAILED
@@ -98,6 +106,20 @@ OPEN → IN_PROGRESS → DONE
 ```
 
 When all sub-tickets of a REVIEW ticket reach DONE/FAILED, the parent ticket is automatically re-opened for the manager to review results.
+
+### Institutional Memory & Zero-Bloat RAG (SQLite FTS5)
+
+- Zero external vector database dependencies (no ChromaDB, FAISS, or heavy embedding models).
+- Uses SQLite's native C FTS5 engine with Porter stemming (`tokenize='porter unicode61'`) and BM25 relevance ranking.
+- When tickets complete (`DONE`), solutions and key architectural decisions are automatically indexed into memory.
+- During context assembly, the Memento pattern dynamically retrieves top-k relevant past knowledge entries.
+- Agents can query memory at any time via the `search_knowledge` tool.
+
+### Human-in-the-Loop (HITL) Guardrails & Tool RBAC
+
+- Critical tasks can require operator signoff before execution (`requires_approval = 1` / `AWAITING_APPROVAL`).
+- Operators approve or reject tasks with one click in the Web UI or via `vectis tickets approve` / `vectis tickets reject`.
+- Granular Role-Based Access Control (`allowed_tools` column per agent): prevents non-technical agents from executing shell commands.
 
 ### Memento Pattern
 

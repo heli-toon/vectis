@@ -66,8 +66,8 @@ def mem_db():
 
     for agent in DEFAULT_TEST_AGENTS:
         conn.execute(
-            """INSERT INTO agents (id, name, role, system_prompt, model_name, manager_id, budget_limit)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO agents (id, name, role, system_prompt, model_name, manager_id, budget_limit, allowed_tools)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 agent["id"],
                 agent["name"],
@@ -76,6 +76,7 @@ def mem_db():
                 agent["model_name"],
                 agent["manager_id"],
                 agent["budget_limit"],
+                agent.get("allowed_tools", "*"),
             ),
         )
     conn.commit()

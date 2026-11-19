@@ -112,6 +112,7 @@ def draw_dashboard(stdscr, data: Dict[str, Any], paused: bool = False, colors: O
     # 2. Tickets Metrics Summary Bar
     c = data["counts"]
     open_c = c.get("OPEN", 0)
+    appr_c = c.get("AWAITING_APPROVAL", 0)
     act_c = c.get("IN_PROGRESS", 0)
     rev_c = c.get("REVIEW", 0)
     done_c = c.get("DONE", 0)
@@ -120,7 +121,7 @@ def draw_dashboard(stdscr, data: Dict[str, Any], paused: bool = False, colors: O
 
     summary_text = (
         f" Tickets ({data['total_tickets']}): "
-        f"OPEN: {open_c} | ACTIVE: {act_c} | REVIEW: {rev_c} | DONE: {done_c} | FAILED: {fail_c} | PAUSED: {pau_c}"
+        f"OPEN: {open_c} | APPROVAL: {appr_c} | ACTIVE: {act_c} | REVIEW: {rev_c} | DONE: {done_c} | FAILED: {fail_c} | PAUSED: {pau_c}"
     )
     safe_addstr(stdscr, 2, 0, summary_text, curses.A_REVERSE)
 

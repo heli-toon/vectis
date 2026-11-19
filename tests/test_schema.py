@@ -12,6 +12,7 @@ def test_schema_tables_exist(mem_db):
     assert "agents" in tables
     assert "tickets" in tables
     assert "execution_logs" in tables
+    assert "memories" in tables
 
 
 def test_schema_columns(mem_db):
@@ -20,6 +21,10 @@ def test_schema_columns(mem_db):
     assert "retry_count" in tickets_cols
     assert "max_retries" in tickets_cols
     assert "error_message" in tickets_cols
+    assert "requires_approval" in tickets_cols
+
+    agents_cols = {row["name"] for row in mem_db.execute("PRAGMA table_info(agents)").fetchall()}
+    assert "allowed_tools" in agents_cols
 
     logs_cols = {row["name"] for row in mem_db.execute("PRAGMA table_info(execution_logs)").fetchall()}
     assert "execution_time_ms" in logs_cols
@@ -105,6 +110,10 @@ def test_schema_migration_idempotent(tmp_path, monkeypatch):
     assert "retry_count" in tickets_cols
     assert "max_retries" in tickets_cols
     assert "error_message" in tickets_cols
+    assert "requires_approval" in tickets_cols
+
+    agents_cols = {row["name"] for row in verify_conn.execute("PRAGMA table_info(agents)").fetchall()}
+    assert "allowed_tools" in agents_cols
 
     logs_cols = {row["name"] for row in verify_conn.execute("PRAGMA table_info(execution_logs)").fetchall()}
     assert "execution_time_ms" in logs_cols
