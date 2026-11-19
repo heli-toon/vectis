@@ -57,6 +57,7 @@ py-modules = [
     "heartbeat",
     "init_db",
     "main",
+    "memory",
     "monitor",
     "tools",
     "web_ui",

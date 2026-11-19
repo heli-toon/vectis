@@ -1,8 +1,43 @@
-.env
+# Byte-compiled / optimized / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# SQLite databases, WAL logs, and temporary lock files
 *.db
-__pycache__
-.venv
-workspaces/
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and distribution artifacts
 build/
 dist/
 *.egg-info/
+.eggs/
+wheels/
+
+# Runtime task workspaces
+workspaces/*
+!workspaces/.gitkeep
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
